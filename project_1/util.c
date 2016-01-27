@@ -10,13 +10,18 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <netdb.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <regex.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+
+
+
 
 #ifdef DEBUG
    #define DEBUG_PRINT(x) printf x

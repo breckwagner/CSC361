@@ -7,14 +7,12 @@
 
 #include "util.c"
 
-#include "netdb.h"
-
 
 
 /* define maximal string and reply length, this is just an example.*/
 /* MAX_RES_LEN should be defined larger (e.g. 4096) in real testing. */
-#define MAX_STR_LEN 120
-#define MAX_RES_LEN 120
+#define MAX_STR_LEN 4096
+#define MAX_RES_LEN 4096
 
 int parse_URI(char *uri, char *hostname, int *port, char *identifier);
 
@@ -22,8 +20,7 @@ void perform_http(int sockid, char *identifier);
 
 int open_connection(char *hostname, int port);
 
-int main(int argc, char ** argv);
-
+int main(int argc, char * argv[]);
 
 /*******************************************************************************
  * Main() routine
@@ -35,12 +32,20 @@ int main(int argc, char ** argv);
  ******************************************************************************/
 
 //main(int argc, char *argv)
-int main(int argc, char ** argv) {
-    char uri[MAX_STR_LEN] = "http://google.com/index.html";
+int main(int argc, char * argv[]) {
+    char uri[MAX_STR_LEN];
+    bzero( uri, MAX_STR_LEN);
+    if(argc==1) {
+        char tmp [] = "http://google.com:80/index.html";
+        memcpy(uri, tmp, sizeof(tmp));
+    } else if (argc==2) {
+        memcpy(uri, argv[1], sizeof(argv[1]));
+    } else {
+        return 0;
+    }
     char hostname[MAX_STR_LEN];
     char identifier[MAX_STR_LEN];
     int sockid, port;
-
     printf("Open URI:  ");
     //scanf("%s", uri);
     int parser_exit_code = parse_URI(uri, hostname, &port, identifier);
@@ -52,14 +57,12 @@ int main(int argc, char ** argv) {
       hostname, port, identifier));
     
     sockid = open_connection(hostname, port);
-    DEBUG_PRINT(("open_connection(hostname, port) returned a sockid: '%d'\n", sockid));
+    DEBUG_PRINT(("\nopen_connection(hostname, port) returned a sockid: '%d'\n", sockid));
     
     perform_http(sockid, identifier);
     
     return 0;
 }
-
-/*------ Parse an "uri" into "hostname" and resource "identifier" --------*/
 
 /*******************************************************************************
  * connect to a HTTP server using hostname and port, and get the resource
@@ -91,8 +94,8 @@ int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
       for (i = 0; i < n_matches; i++) {
         int start, finish;
         if (m[i].rm_so == -1) break;
-        start = m[i].rm_so + (p - uri);
-        finish = m[i].rm_eo + (p - uri);
+        start = m[i].rm_so;// + (p - uri);
+        finish = m[i].rm_eo;// + (p - uri);
         
         switch(i) {
           case 0: 
@@ -103,17 +106,19 @@ int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
           break;
           case 2: 
             DEBUG_PRINT(("\tParsed 'hostname': "));
-            memcpy(hostname, &uri[start], (finish - start)); 
+            memmove(hostname, &uri[start], (finish - start)); 
+            hostname[(finish - start)] = '\0';
           break;
           case 3: 
             DEBUG_PRINT(("\tParsed 'port': "));
             char port_copy[5];
-            memcpy(port_copy, &uri[start], (finish - start)); 
+            memmove(port_copy, &uri[start], (finish - start)); 
             *port = (finish - start > 0)?(atoi(port_copy)):(80); 
           break;
           case 4: 
             DEBUG_PRINT(("\tParsed 'identifier': "));
-            memcpy(identifier, &uri[start], (finish - start)); 
+            memmove(identifier, &uri[start], (finish - start)); 
+            identifier[(finish - start)] = '\0';
           break;
           default: break;
         }
@@ -139,21 +144,22 @@ int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
  * @return void
  ******************************************************************************/
 void perform_http(int sockid, char *identifier) {
-    char sendline[100];
-    char recvline[100];
-         
-    while(true) {
-        // write zero-valued bytes to sendline/recvline
-        bzero( sendline, 100);
-        bzero( recvline, 100);
-        
-        
-        fgets(sendline,100,stdin); /*stdin = 0 , for standard input */
-         
-        write(sockid,sendline,strlen(sendline)+1);
-        read(sockid,recvline,100);
-        printf("%s",recvline);
-    }
+    char request_buffer[MAX_STR_LEN];
+    char receive_buffer[MAX_RES_LEN];
+    
+    // write zero-valued bytes to sendline/recvline
+    bzero( request_buffer, MAX_STR_LEN);
+    bzero( receive_buffer, MAX_RES_LEN);
+    
+    sprintf(request_buffer, "GET /%s HTTP/1.0\r\n\r\n", identifier);
+
+    printf("---Request begin---\n%s\n\n---Request end---\nHTTP request sent, awaiting response...\n\n", request_buffer);
+     
+    write(sockid,request_buffer,strlen(request_buffer)+1);
+
+    read(sockid,receive_buffer,MAX_RES_LEN);
+    
+    printf("---Response header ---\n%s\n\n--- Response body ---",receive_buffer);
     close(sockid);
 }
 
@@ -164,22 +170,57 @@ void perform_http(int sockid, char *identifier) {
  ******************************************************************************/
 
 int open_connection(char *hostname, int port) {
-  int sockfd;
-  
+  int socket_id;
+  /*
   struct sockaddr_in server_addr;
   struct hostent *server_ent;
   server_ent= gethostbyname(hostname);
+  printf("\nGetting Host by Name: %.*s",server_ent->h_length, server_ent->h_addr);
+  
+  
+  
   memcpy(&server_addr.sin_addr, server_ent->h_addr, server_ent->h_length);
   
   
   sockfd=socket(AF_INET,SOCK_STREAM,0);
-  bzero(&server_addr,sizeof(server_addr));
+  
+  
+  //bzero(&server_addr,sizeof(server_addr));
+  
+  
   server_addr.sin_family=AF_INET;
+  
+  
   server_addr.sin_port=htons(port);
    
-  inet_pton(AF_INET,gethostbyname(hostname),&(server_addr.sin_addr));
-   
-  connect(sockfd,(struct sockaddr *)&server_addr,sizeof(server_addr));
+  //inet_pton(AF_INET,server_addr.sin_addr,&(server_addr.sin_addr));
+  
+    int connection_code = connect(sockfd,(struct sockaddr *)&server_addr,sizeof(server_addr));
+   */
+  struct hostent        *he;
+  struct sockaddr_in  server;
+  bzero(&server,sizeof(server));
 
-  return sockfd;
+  /* resolve hostname */
+  // TODO: USE getaddrinfo INSTEAD / gethostbyname is deprecated
+  if ( (he = gethostbyname(hostname) ) == NULL ) {
+      exit(1); /* error */
+  }
+
+  /* copy the network address to sockaddr_in structure */
+  memcpy(&server.sin_addr, he->h_addr_list[0], he->h_length);
+  //DEBUG_PRINT(("\n\t[%s]", server.sin_addr));
+  
+  socket_id=socket(AF_INET,SOCK_STREAM,0);
+  server.sin_family = AF_INET;
+  server.sin_port = htons(port);
+  
+  int connection_code = connect(socket_id, (struct sockaddr *)&server, sizeof(server) );
+  
+  
+  DEBUG_PRINT(("\nAttemting Connection: %s", (connection_code==0)?("OK"):("Failed")));
+  
+  DEBUG_PRINT(("\n\tcode=%d", connection_code));
+  
+  return socket_id;
 }
