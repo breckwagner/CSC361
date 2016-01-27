@@ -7,20 +7,13 @@
 
 #include "util.c"
 
-
-
-/* define maximal string and reply length, this is just an example.*/
-/* MAX_RES_LEN should be defined larger (e.g. 4096) in real testing. */
-#define MAX_STR_LEN 4096
-#define MAX_RES_LEN 4096
-
 int parse_URI(char *uri, char *hostname, int *port, char *identifier);
 
-void perform_http(int sockid, char *identifier);
+void perform_http(int sockid, char *identifier, char* uri);
 
 int open_connection(char *hostname, int port);
 
-int main(int argc, char * argv[]);
+int main(int argc, char* argv[]);
 
 /*******************************************************************************
  * Main() routine
@@ -32,14 +25,16 @@ int main(int argc, char * argv[]);
  ******************************************************************************/
 
 //main(int argc, char *argv)
-int main(int argc, char * argv[]) {
+int main(int argc, char* argv[]) {
     char uri[MAX_STR_LEN];
     bzero( uri, MAX_STR_LEN);
     if(argc==1) {
-        char tmp [] = "http://google.com:80/index.html";
+        char tmp [] = //"http://cnn.com/index.html"; 
+                        "http://localhost:9898/index.html";
         memcpy(uri, tmp, sizeof(tmp));
     } else if (argc==2) {
-        memcpy(uri, argv[1], sizeof(argv[1]));
+        strcpy(uri, argv[1]);
+        //memcpy(uri, argv[1], sizeof(argv[1]));
     } else {
         return 0;
     }
@@ -52,14 +47,14 @@ int main(int argc, char * argv[]) {
     
     
     assert(parser_exit_code!=false);
-    printf("URI Parser Finished with Code: %d\n", parser_exit_code );
+    DEBUG_PRINT(("URI Parser Finished with Code: %d\n", parser_exit_code ));
     DEBUG_PRINT(("hostname: '%s', port: '%d', identifier: '%s'\n", 
       hostname, port, identifier));
     
     sockid = open_connection(hostname, port);
     DEBUG_PRINT(("\nopen_connection(hostname, port) returned a sockid: '%d'\n", sockid));
     
-    perform_http(sockid, identifier);
+    perform_http(sockid, identifier, uri);
     
     return 0;
 }
@@ -117,7 +112,7 @@ int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
           break;
           case 4: 
             DEBUG_PRINT(("\tParsed 'identifier': "));
-            memmove(identifier, &uri[start], (finish - start)); 
+            memmove(identifier, &uri[start], (finish - start));
             identifier[(finish - start)] = '\0';
           break;
           default: break;
@@ -143,7 +138,7 @@ int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
  * @param (char*) identifier
  * @return void
  ******************************************************************************/
-void perform_http(int sockid, char *identifier) {
+void perform_http(int sockid, char* identifier, char* uri) {
     char request_buffer[MAX_STR_LEN];
     char receive_buffer[MAX_RES_LEN];
     
@@ -151,52 +146,49 @@ void perform_http(int sockid, char *identifier) {
     bzero( request_buffer, MAX_STR_LEN);
     bzero( receive_buffer, MAX_RES_LEN);
     
-    sprintf(request_buffer, "GET /%s HTTP/1.0\r\n\r\n", identifier);
+    sprintf(request_buffer, "GET %s HTTP/1.0\r\n\r\n", uri);
 
-    printf("---Request begin---\n%s\n\n---Request end---\nHTTP request sent, awaiting response...\n\n", request_buffer);
+    printf("---Request begin---\n%s\n---Request end---\nHTTP request sent, awaiting response...\n\n", request_buffer);
      
     write(sockid,request_buffer,strlen(request_buffer)+1);
 
     read(sockid,receive_buffer,MAX_RES_LEN);
     
-    printf("---Response header ---\n%s\n\n--- Response body ---",receive_buffer);
+    
+    // Loop till "\r\n\r\n" is found
+   /* int i;
+    char* ptr = receive_buffer;
+    bool flag = true;
+    while(flag) {
+         ptr++;
+        if(*ptr=='\n'||*ptr=='\r'){
+          if(++i<2) {
+            flag = false;
+          }
+        } else {
+          i = 0;
+        }
+    }*/
+    
+    
+    
+    printf("---Response header ---\n%s\n",(receive_buffer));
+    
+    printf("\n--- Response body ---");
+    
     close(sockid);
 }
 
 /*******************************************************************************
- *
  * open_conn() routine. It connects to a remote server on a specified port.
  *
+ * @param (char*) hostname
+ * @param (int) port
+ * @return void
  ******************************************************************************/
 
 int open_connection(char *hostname, int port) {
   int socket_id;
-  /*
-  struct sockaddr_in server_addr;
-  struct hostent *server_ent;
-  server_ent= gethostbyname(hostname);
-  printf("\nGetting Host by Name: %.*s",server_ent->h_length, server_ent->h_addr);
-  
-  
-  
-  memcpy(&server_addr.sin_addr, server_ent->h_addr, server_ent->h_length);
-  
-  
-  sockfd=socket(AF_INET,SOCK_STREAM,0);
-  
-  
-  //bzero(&server_addr,sizeof(server_addr));
-  
-  
-  server_addr.sin_family=AF_INET;
-  
-  
-  server_addr.sin_port=htons(port);
-   
-  //inet_pton(AF_INET,server_addr.sin_addr,&(server_addr.sin_addr));
-  
-    int connection_code = connect(sockfd,(struct sockaddr *)&server_addr,sizeof(server_addr));
-   */
   struct hostent        *he;
   struct sockaddr_in  server;
   bzero(&server,sizeof(server));

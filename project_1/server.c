@@ -7,10 +7,13 @@
 
 #include "util.c"
 
-#define MAX_STR_LEN 120         /* maximum string length */
-#define SERVER_PORT_ID 9898     /* server port number */
-
 void cleanExit();
+
+int perform_http(int sockid, char * request);
+
+int parse_http_header(char * data);
+
+int main(int argc, char* argv[]);
 
 /*******************************************************************************
  * tasks for main
@@ -20,9 +23,19 @@ void cleanExit();
  * Communicate with client and close new socket after done
  ******************************************************************************/
 
-// main(int argc, char *argv) {
-int main(int argc, char ** argv) {
-    char str[100];
+int main(int argc, char* argv[]) {
+    int port;
+    if(argc==1) {
+        port = SERVER_PORT_ID;
+    } else if (argc==2) {
+        port = atoi(argv[1]);
+    } else {
+        return 0;
+    }
+    printf("%d",port);
+        
+    
+    char str[MAX_STR_LEN];
     int listen_fd, comm_fd;
  
     struct sockaddr_in servaddr;
@@ -33,25 +46,35 @@ int main(int argc, char ** argv) {
  
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-    servaddr.sin_port = htons(SERVER_PORT_ID);
+    servaddr.sin_port = htons(port);
  
     bind(listen_fd, (struct sockaddr *) &servaddr, sizeof(servaddr));
  
     listen(listen_fd, 10);
  
     comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
+    
+    bzero( str, MAX_STR_LEN);
+    read(comm_fd,str,MAX_STR_LEN);
+    
+
+    
  
-    while (true) {
+    //while (true) {
  
-        bzero( str, 100);
+        
  
-        read(comm_fd,str,100);
+        
  
-        printf("Echoing back - %s",str);
+        printf("Processing Request - %s",str);
  
-        write(comm_fd, str, strlen(str)+1);
+        perform_http(comm_fd, str);
+        
+        //write(comm_fd, str, strlen(str)+1);
  
-    }
+    //}
+    
+
     
     
     /*
@@ -60,6 +83,8 @@ int main(int argc, char ** argv) {
     while (1) {
       close(newsockid);
     }*/
+    
+    cleanExit();
 }
 
 /*******************************************************************************
@@ -77,7 +102,36 @@ void cleanExit() {
  * Accepts a request from "sockid" and sends a response to "sockid".
  *
  ******************************************************************************/
-int perform_http(int sockid) {
+int perform_http(int sockid, char * request) {
+    int i = 200;
+    /*
+    int c;
+    FILE *file;
+    file = fopen(, "r");
+    if (file) {
+        while ((c = getc(file)) != EOF)
+            putchar(c);
+        fclose(file);
+    }
+    */
+    char response[MAX_STR_LEN];
+    char data[] = "This is an example file";
+    
+    switch (i) {
+        case 200:
+            sprintf(response, "HTTP/1.0 200 OK\r\n\r\n%s", data);
+        break;
+        case 501:
+            sprintf(response, "HTTP/1.0 200 OK\r\n\r\n%s", data);
+        break;
+        case 404:
+            sprintf(response, "HTTP/1.0 200 OK\r\n\r\n%s", data);
+        break;
+        default:
+        break;
+    }
+    
+    write(sockid, response, MAX_STR_LEN);
 
 }
 
@@ -85,7 +139,13 @@ int perform_http(int sockid) {
 
 
 
-
+int parse_http_header(char * data) {
+    // TO BE IMPLEMENTED
+    
+    
+    
+    return 0;
+}
 
 
 

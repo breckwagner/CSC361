@@ -29,17 +29,30 @@
    #define DEBUG_PRINT(x) do {} while (0)
 #endif
 
+#define SERVER_PORT_ID 9898     /* server port number */
+
 #define MAX_ERROR_MSG 0x1000
+
+/* define maximal string and reply length, this is just an example.*/
+#define MAX_STR_LEN 4096
+
+/* MAX_RES_LEN should be defined larger (e.g. 4096) in real testing. */
+#define MAX_RES_LEN 4096
 
 /* ------------
 * util.c: used by client.c and server.c 
 * ---------------*/
 /*
 int writen(int sd, char *ptr, int size);
+
 int readn(int sd, char *ptr, int size);
 
-/// write "size" bytes of "ptr" to "sd" /
+static int compile_regex (regex_t * r, const char * regex_text);
 
+static int match_regex (regex_t * r, const char * to_match, char ** matches);
+*/
+/// write "size" bytes of "ptr" to "sd" /
+/*
 int writen(int sd, char *ptr, int size) {
     int no_left, no_written;
 
