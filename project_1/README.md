@@ -22,24 +22,15 @@ $ make
 ################################################################################
 
 To start the server:
-$ ./server
+$ ./server 8080 ./
 
 Then to run a test execute:
-$ ./client 
+$ ./client http://localhost:8080/index.html
 
 To sellect a non default server/host use: 
 $ ./client <URI proto://host:port/path>
 
 
-# TODO
-################################################################################
-- Seperate response body from response header using the newline char or 
-	something simular
-- 
-
-
-# CHANGELOG
-################################################################################
 
 
 
