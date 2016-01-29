@@ -5,39 +5,12 @@
  * CSC 361
  * Instructor: Kui Wu
  ******************************************************************************/
-#define DEBUG 3
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <regex.h>
-#include <stdbool.h>
-#include <assert.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
+//#define DEBUG 3
 
 
 
+#include "util.h"
 
-#ifdef DEBUG
-   #define DEBUG_PRINT(x) printf x
-#else
-   #define DEBUG_PRINT(x) do {} while (0)
-#endif
-
-#define SERVER_PORT_ID 9898     /* server port number */
-
-#define MAX_ERROR_MSG 0x1000
-
-/* define maximal string and reply length, this is just an example.*/
-#define MAX_STR_LEN 4096
-
-/* MAX_RES_LEN should be defined larger (e.g. 4096) in real testing. */
-#define MAX_RES_LEN 4096
 
 /* ------------
 * util.c: used by client.c and server.c 
@@ -52,7 +25,7 @@ static int compile_regex (regex_t * r, const char * regex_text);
 static int match_regex (regex_t * r, const char * to_match, char ** matches);
 */
 /// write "size" bytes of "ptr" to "sd" /
-/*
+
 int writen(int sd, char *ptr, int size) {
     int no_left, no_written;
 
@@ -84,7 +57,8 @@ int readn(int sd, char *ptr, int size) {
       ptr += no_read;
     }
    return(size - no_left);
-}*/
+}
+
 
 static int compile_regex (regex_t * r, const char * regex_text)
 {
@@ -99,45 +73,101 @@ static int compile_regex (regex_t * r, const char * regex_text)
       return 0;
 }
 
-/*
-   Match the string in "to_match" against the compiled regular
-   expression in "r".
- */
+/*******************************************************************************
+ * 
+ *
+ * @param (char *) string
+ * @param (char *) delimiter
+ * @return 0 on success -1 otherwise
+ ******************************************************************************/
+int split_sequence(char * string, char * delimiter) {
+   char * ptr = string;
+   int i = 0, j = 0;
+   for(; ptr[i]!='\0'; i++) {
+      if(ptr[i] == delimiter[j]) {
+         j++;
+      } else if(delimiter[j] == '\0') {
+         while(j > 0) string[i - j--] = '\0';
+      } else {
+         i -= j;
+         j = 0;
+      }
+   }
+   return 0;
+}
 
-static int match_regex (regex_t * r, const char * to_match, char ** matches) {
-      /* "P" is a pointer into the string which points to the end of the
-          previous match. */
-      const char * p = to_match;
+/*******************************************************************************
+ * connect to a HTTP server using hostname and port, and get the resource
+ * specified by identifier
+ * 
+ * @param (char*) uri
+ * @param (char*) hostname
+ * @param (int*) port
+ * @param (char*) identifier
+ * @return (int) true (1) if successful and false (0)
+ ******************************************************************************/
+int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
+      DEBUG_PRINT(("\nStarting Parser: "));
+      regex_t r;
+      const char * regex_text = 
+            "([[:alpha:]]+)?://([^/:]+)?:?([[:digit:]]*)/?([[:print:]]*)";
+            //"(^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(?([^#]*))?(#(.*))?)";
+
+      compile_regex(& r, regex_text);
+      
+      const char * p = uri;
+      char * ptr;
       /* "N_matches" is the maximum number of matches allowed. */
-      const int n_matches = 10;
+      const int n_matches = 5;
       /* "M" contains the matches found. */
       regmatch_t m[n_matches];
-
+      
+      DEBUG_PRINT(("\nParsing Ready: "));
+      
       while (1) {
-            int i = 0;
-            int nomatch = regexec (r, p, n_matches, m, 0);
-            if (nomatch) {
-                  printf ("No more matches.\n");
-                  return nomatch;
+         int i = 0;
+         int nomatch = regexec (&r, p, n_matches, m, 0);
+         if (nomatch) return nomatch;
+         for (i = 0; i < n_matches; i++) {
+            int start, finish;
+            if (m[i].rm_so == -1) break;
+            start = m[i].rm_so;// + (p - uri);
+            finish = m[i].rm_eo;// + (p - uri);
+            
+            switch(i) {
+               case 0: 
+                  DEBUG_PRINT(("\nParsing: "));
+               break;
+               case 1: 
+                  DEBUG_PRINT(("\tParsed 'protocol': "));
+               break;
+               case 2: 
+                  DEBUG_PRINT(("\tParsed 'hostname': "));
+                  memmove(hostname, &uri[start], (finish - start)); 
+                  hostname[(finish - start)] = '\0';
+               break;
+               case 3: 
+                  DEBUG_PRINT(("\tParsed 'port': "));
+                  char port_copy[5];
+                  memmove(port_copy, &uri[start], (finish - start)); 
+                  *port = (finish - start > 0)?(atoi(port_copy)):(80); 
+               break;
+               case 4: 
+                  DEBUG_PRINT(("\tParsed 'identifier': "));
+                  memmove(identifier, &uri[start], (finish - start));
+                  identifier[(finish - start)] = '\0';
+               break;
+               default: break;
             }
-            for (i = 0; i < n_matches; i++) {
-                  int start;
-                  int finish;
-                  if (m[i].rm_so == -1) {
-                        break;
-                  }
-                  start = m[i].rm_so + (p - to_match);
-                  finish = m[i].rm_eo + (p - to_match);
-                  if (i == 0) {
-                        printf ("$& is ");
-                  }
-                  else {
-                        printf ("$%d is ", i);
-                  }
-                  printf ("'%.*s' (bytes %d:%d)\n", (finish - start),
-                              to_match + start, start, finish);
-            }
-            p += m[0].rm_eo;
+            
+            DEBUG_PRINT(("'%.*s' (bytes %d:%d)\n", (finish - start),
+            uri + start, start, finish));
+         }
+         p += m[0].rm_eo;
       }
-      return 0;
+      
+      // Free the memory allocated to the pattern buffer
+      regfree (& r);
+      
+      return true;
 }

@@ -5,9 +5,7 @@
  * Instructor: Kui Wu
  ******************************************************************************/
 
-#include "util.c"
-
-int parse_URI(char *uri, char *hostname, int *port, char *identifier);
+#include "util.h"
 
 void perform_http(int sockid, char *identifier, char* uri);
 
@@ -41,7 +39,7 @@ int main(int argc, char* argv[]) {
     char hostname[MAX_STR_LEN];
     char identifier[MAX_STR_LEN];
     int sockid, port;
-    printf("Open URI:  ");
+    DEBUG_PRINT(("Open URI:  "));
     //scanf("%s", uri);
     int parser_exit_code = parse_URI(uri, hostname, &port, identifier);
     
@@ -59,76 +57,6 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-/*******************************************************************************
- * connect to a HTTP server using hostname and port, and get the resource
- * specified by identifier
- * 
- * @param (char*) uri
- * @param (char*) hostname
- * @param (int*) port
- * @param (char*) identifier
- * @return (int) true (1) if successful and false (0)
- ******************************************************************************/
-int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
-    regex_t r;
-    const char * regex_text = 
-        "([[:alpha:]]+)://([^/:]+):?([[:digit:]]*)/?([[:print:]]*)";
-    compile_regex(& r, regex_text);
-    
-    const char * p = uri;
-    char * ptr;
-    /* "N_matches" is the maximum number of matches allowed. */
-    const int n_matches = 5;
-    /* "M" contains the matches found. */
-    regmatch_t m[n_matches];
-    
-    while (1) {
-      int i = 0;
-      int nomatch = regexec (&r, p, n_matches, m, 0);
-      if (nomatch) return nomatch;
-      for (i = 0; i < n_matches; i++) {
-        int start, finish;
-        if (m[i].rm_so == -1) break;
-        start = m[i].rm_so;// + (p - uri);
-        finish = m[i].rm_eo;// + (p - uri);
-        
-        switch(i) {
-          case 0: 
-            DEBUG_PRINT(("\nParsing: "));
-          break;
-          case 1: 
-            DEBUG_PRINT(("\tParsed 'protocol': "));
-          break;
-          case 2: 
-            DEBUG_PRINT(("\tParsed 'hostname': "));
-            memmove(hostname, &uri[start], (finish - start)); 
-            hostname[(finish - start)] = '\0';
-          break;
-          case 3: 
-            DEBUG_PRINT(("\tParsed 'port': "));
-            char port_copy[5];
-            memmove(port_copy, &uri[start], (finish - start)); 
-            *port = (finish - start > 0)?(atoi(port_copy)):(80); 
-          break;
-          case 4: 
-            DEBUG_PRINT(("\tParsed 'identifier': "));
-            memmove(identifier, &uri[start], (finish - start));
-            identifier[(finish - start)] = '\0';
-          break;
-          default: break;
-        }
-        
-        DEBUG_PRINT(("'%.*s' (bytes %d:%d)\n", (finish - start),
-        uri + start, start, finish));
-      }
-      p += m[0].rm_eo;
-    }
-    
-    // Free the memory allocated to the pattern buffer
-    regfree (& r);
-    
-    return true;
-}
 
 /*******************************************************************************
  * connect to a HTTP server using hostname and port, and get the resource
@@ -139,6 +67,8 @@ int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
  * @return void
  ******************************************************************************/
 void perform_http(int sockid, char* identifier, char* uri) {
+    int i = 1;
+  
     char request_buffer[MAX_STR_LEN];
     char receive_buffer[MAX_RES_LEN];
     
@@ -148,33 +78,25 @@ void perform_http(int sockid, char* identifier, char* uri) {
     
     sprintf(request_buffer, "GET %s HTTP/1.0\r\n\r\n", uri);
 
-    printf("---Request begin---\n%s\n---Request end---\nHTTP request sent, awaiting response...\n\n", request_buffer);
+    printf("---Request begin---\n%s---Request end---\nHTTP request sent, awaiting response...\n\n", request_buffer);
      
     write(sockid,request_buffer,strlen(request_buffer)+1);
-
-    read(sockid,receive_buffer,MAX_RES_LEN);
     
+    i = read(sockid,receive_buffer,MAX_RES_LEN);
     
-    // Loop till "\r\n\r\n" is found
-   /* int i;
-    char* ptr = receive_buffer;
-    bool flag = true;
-    while(flag) {
-         ptr++;
-        if(*ptr=='\n'||*ptr=='\r'){
-          if(++i<2) {
-            flag = false;
-          }
-        } else {
-          i = 0;
-        }
-    }*/
+    split_sequence(receive_buffer, "\r\n\r\n");
+    int breakpoint = strlen(receive_buffer);
     
     
     
-    printf("---Response header ---\n%s\n",(receive_buffer));
+    printf("---Response header ---\n%s\n",receive_buffer);
     
-    printf("\n--- Response body ---");
+    printf("\n--- Response body ---\n%s",&receive_buffer[breakpoint + strlen("\r\n\r\n")]);
+    
+    while(i > 0) {
+      i = read(sockid,receive_buffer,MAX_RES_LEN);
+      printf("%s", receive_buffer);
+    }
     
     close(sockid);
 }
@@ -216,3 +138,4 @@ int open_connection(char *hostname, int port) {
   
   return socket_id;
 }
+
