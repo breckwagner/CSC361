@@ -14,13 +14,15 @@
 #include <netdb.h>
 #include <netinet/in.h>
 
-#define DEBUG 3
+//#define DEBUG 3
 
 #ifdef DEBUG
 	#define DEBUG_PRINT(x) printf x
 #else
 	#define DEBUG_PRINT(x) do {} while (0)
 #endif
+
+#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 
 #define SERVER_PORT_ID 9898
 #define MAX_ERROR_MSG 0x1000

@@ -93,10 +93,10 @@ void perform_http(int sockid, char* identifier, char* uri) {
     
     printf("\n--- Response body ---\n%s",&receive_buffer[breakpoint + strlen("\r\n\r\n")]);
     
-    while(i > 0) {
-      i = read(sockid,receive_buffer,MAX_RES_LEN);
+    //while(i > 0) {
+      i = readn(sockid,receive_buffer,MAX_RES_LEN);
       printf("%s", receive_buffer);
-    }
+    //}
     
     close(sockid);
 }

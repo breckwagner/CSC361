@@ -110,7 +110,7 @@ int parse_URI(char *uri, char *hostname, int *port, char *identifier) {
       DEBUG_PRINT(("\nStarting Parser: "));
       regex_t r;
       const char * regex_text = 
-            "([[:alpha:]]+)?://([^/:]+)?:?([[:digit:]]*)/?([[:print:]]*)";
+            "([[:alpha:]]+)://([^/:]+):?([[:digit:]]*)/?([[:print:]]*)";
             //"(^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(?([^#]*))?(#(.*))?)";
 
       compile_regex(& r, regex_text);

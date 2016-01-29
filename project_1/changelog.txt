@@ -7,7 +7,7 @@ Date: 2016-01-XX
 # TODO
 ################################################################################
 
-- Errors with regex parsing of URI 
+- Errors with regex parsing of URI / Some URI's may not work
 
 # CHANGELOG
 ################################################################################
@@ -15,4 +15,4 @@ Date: 2016-01-XX
 - Added file support
 - Added code 501/404
 - Fixed many coding errors
-
+- Added support for non hard coded ports

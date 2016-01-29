@@ -25,8 +25,14 @@ int main(int argc, char* argv[]);
  ******************************************************************************/
 
 int main(int argc, char* argv[]) {
+    atexit (cleanExit);
+    
     int port;
+    int option = 1;
     char ident[MAX_STR_LEN];
+    
+    // Process CMD Line Args [BEGIN]
+    ////////////////////////////////////////////////////////////////////////////
     if(argc==1) {
         port = SERVER_PORT_ID;
     } else if (argc==3) {
@@ -39,20 +45,25 @@ int main(int argc, char* argv[]) {
         DEBUG_PRINT(("Wrong number of Arguments: exiting"));
         return 0;
     }
-        
+    ////////////////////////////////////////////////////////////////////////////
+    // Process CMD Line Args [END]
     
+        
+    // Setup Socket [BEGIN]
+    ////////////////////////////////////////////////////////////////////////////
     char str[MAX_STR_LEN];
     int listen_fd, comm_fd;
  
     struct sockaddr_in servaddr;
- 
+
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
- 
     bzero( &servaddr, sizeof(servaddr));
- 
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htons(INADDR_ANY);
     servaddr.sin_port = htons(port);
+    
+    // tells kernal to force reuse of the address preventing binding problems
+    setsockopt(listen_fd,SOL_SOCKET,SO_REUSEADDR,&option,sizeof(int));
  
     bind(listen_fd, (struct sockaddr *) &servaddr, sizeof(servaddr));
  
@@ -62,34 +73,12 @@ int main(int argc, char* argv[]) {
     
     bzero( str, MAX_STR_LEN);
     read(comm_fd,str,MAX_STR_LEN);
-    
+    ////////////////////////////////////////////////////////////////////////////
+    // Setup Socket [END]
 
-    
- 
-    //while (true) {
- 
-        
- 
-        
- 
-        printf("Processing Request - %s",str);
- 
-        perform_http(comm_fd, str, ident);
-        
-        //write(comm_fd, str, strlen(str)+1);
- 
-    //}
-    
-
-    
-    
-    /*
-    int newsockid; // return value of the accept() call 
-
-    while (1) {
-      close(newsockid);
-    }*/
-    
+    printf("Processing Request - %s",str);
+     
+    perform_http(comm_fd, str, ident);
     cleanExit();
 }
 
@@ -100,6 +89,7 @@ int main(int argc, char* argv[]) {
  ******************************************************************************/
 
 void cleanExit() {
+    printf("Exiting");
     exit(0);
 }
 
@@ -109,36 +99,44 @@ void cleanExit() {
  *
  ******************************************************************************/
 int perform_http(int sockid, char * request, char * identifier) {
+    DEBUG_PRINT(("\nparse_http_header: ident: [%s]", identifier));
     int code = 0;
-    /*
-    int c;
-    FILE *file;
-    file = fopen(, "r");
-    if (file) {
-        while ((c = getc(file)) != EOF)
-            putchar(c);
-        fclose(file);
-    }
-    */
+
     char response[MAX_STR_LEN];
     
     strcpy(response, request);
     
     
-    code = parse_http_header(response, identifier);
-    printf("CODE[%d]", code);
-    char data[] = "This is an example file";
+    code = parse_http_header(response, identifier );
+    DEBUG_PRINT(("\nCODE[%d]", code));
+    
+    char * data = 0;
+    FILE *file;
+    long length = 0;
     
     switch (code) {
         case 200:
-            //sprintf(response, "HTTP/1.0 200 OK\r\n\r\n%s", data);
-            strcpy(response, "HTTP/1.0 501 Not Implemented.\r\n\r\n");
+            
+            file = fopen(identifier, "r");
+            if (file)
+            {
+                fseek (file, 0, SEEK_END);
+                length = ftell (file);
+                fseek (file, 0, SEEK_SET);
+                data = malloc (length);
+                if (data)
+                {
+                    fread (data, 1, length, file);
+                }
+                fclose (file);
+            }
+            
+            sprintf(response, "HTTP/1.0 200 OK\r\n\r\n%s", data);
         break;
         case 404:
-            sprintf(response, "HTTP/1.0 404 Not Found\r\n\r\n%s", data);
+            strcpy(response, "HTTP/1.0 404 Not Found\r\n\r\n");
         break;
         case 501:
-        case 0:
         default:
             strcpy(response, "HTTP/1.0 501 Not Implemented.\r\n\r\n");
         break;
@@ -150,40 +148,55 @@ int perform_http(int sockid, char * request, char * identifier) {
 
 
 
-
+/*******************************************************************************
+ *
+ * Note: intentional sideaffect ident expanded to full path
+ *
+ ******************************************************************************/
 
 int parse_http_header(char * data, char * ident) {
-    char * result;
+    
     char hostname[MAX_STR_LEN];
     char identifier[MAX_STR_LEN];
     char uri[MAX_STR_LEN];
     int port;
     
+    DEBUG_PRINT(("\nparse_http_header: ident: [%s]", ident));
+    
     
     char * token; 
     printf("DATA[%s]", data);
     token = strtok(data, "\n\r ");
-    if(token==NULL) return 0;
+    if(token==NULL) return 5;
     
     printf("TOKEN[%s]", token);
-    //if(strcmp("GET",token) != 0) {
-    //    return 501;
+    if(strcmp("GET",token) != 0) {
+        return 3;
+    }
+    
+    
+    token = strtok(NULL, "\n\r ");
+    int parser_exit_code = parse_URI(token, hostname, &port, identifier);
+    //if(parser_exit_code == 0) {
+    //    DEBUG_PRINT(("\n\nParser Failed\n"));
+    //    return 1;
     //}
+
+    char tmp[MAX_STR_LEN];
+    sprintf(tmp,"%s%s", ident, identifier);
+    DEBUG_PRINT(("file_path: [%s]",tmp));
+    strcpy(ident, tmp);
+    if( access( tmp, F_OK ) == -1 ) return 404;
     
-    /*
-    //token = strtok(NULL, "\n\r ");
-    int parser_exit_code = parse_URI(uri, hostname, &port, identifier);
-    if(parser_exit_code != 0) return 501;
     
-    if( access( ident, F_OK ) == -1 ) return 404;
-    
-    //token = strtok(NULL, "\n\r ");
+    token = strtok(NULL, "\n\r ");
+    DEBUG_PRINT(("token: [%s]", token));
     if(strcmp("HTTP/1.0", token) != 0) {
-        return 501;
-    }*/
+        return 2;
+    }
     
     
-    return 0;
+    return 200;
 }
 
 

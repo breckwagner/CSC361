@@ -30,22 +30,4 @@ $ ./client http://localhost:8080/index.html
 To sellect a non default server/host use: 
 $ ./client <URI proto://host:port/path>
 
-
-
-
-
-
-
-# DESIGN CONSIDERATIONS
-################################################################################
-
-Components                                         Weight    Progress
-Make file                                          5         OK
-Error handling in SimpClient                       10        Mostly
-Correct output in SimpClient                       30        Mostly
-status code 200 and correct content in SimpServer  20        x
-status code 404 in SimpServer                      15        x
-status code 501 in SimpServer                      10        x
-Code style                                         5         OK
-Readme.txt and change.txt(if any)                  5         OK
-Total Weight                                       100       x
+Note: to turn on verbos output to console, uncomment "#define DEBUG 3" in 'util.h'
