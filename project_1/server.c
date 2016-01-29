@@ -177,10 +177,10 @@ int parse_http_header(char * data, char * ident) {
     
     token = strtok(NULL, "\n\r ");
     int parser_exit_code = parse_URI(token, hostname, &port, identifier);
-    //if(parser_exit_code == 0) {
-    //    DEBUG_PRINT(("\n\nParser Failed\n"));
-    //    return 1;
-    //}
+    if(parser_exit_code == 0) {
+        DEBUG_PRINT(("\n\nParser Failed\n"));
+        return 1;
+    }
 
     char tmp[MAX_STR_LEN];
     sprintf(tmp,"%s%s", ident, identifier);

@@ -1,21 +1,33 @@
 
+File: Readme.txt
+Author: Richard B. Wagner
+Date: 2016-01-XX
+################################################################################
 
+#REQUIREMENTS
+################################################################################
 
+This software requires a POSIX compliant environment. It is spacifically 
+designed to run on Ubuntu GNU/Linux but parts of it have been tested on OS X (BSD) and 
+FEDORA (Linux). 
 
+# INSTALATION
+################################################################################
 
+From the terminal/console window in the working directory of the project, run 
+the commands: 
+$ make
 
+# RUNNING
+################################################################################
 
+To start the server:
+$ ./server 8080 ./
 
+Then to run a test execute:
+$ ./client http://localhost:8080/index.html
 
+To sellect a non default server/host use: 
+$ ./client <URI proto://host:port/path>
 
-
-Components                                         Weight
-Make file                                          5
-Error handling in SimpClient                       10
-Correct output in SimpClient                       30
-status code 200 and correct content in SimpServer  20
-status code 404 in SimpServer                      15
-status code 501 in SimpServer                      10
-Code style                                         5
-Readme.txt and change.txt(if any)                  5
-Total Weight                                       100
+Note: to turn on verbos output to console, uncomment "#define DEBUG 3" in 'util.h'
