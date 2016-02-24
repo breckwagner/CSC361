@@ -20,3 +20,7 @@ $ make
 ```bash
 $ ./run <pcap>
 ```
+
+
+# explination
+ How is the duration calculated

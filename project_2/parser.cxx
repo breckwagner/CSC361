@@ -14,15 +14,19 @@
 #include "util.hxx"
 
 #include <stdio.h>
+#include <unistd.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <net/if.h>
 #include <netinet/if_ether.h>
 #include <pcap.h>
+#include <cstring>
 
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 #include <netinet/tcp.h>
-#include <time.h>
+//#include <time.h>
 
 #include <iostream>
 #include <string>
@@ -59,8 +63,26 @@ vector<Connection *> connections;
 
 void printOutput();
 
-int
-timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y);
+int timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y);
+
+int same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
+                     struct in_addr ip_a_dst, uint16_t port_a_dst,
+                     struct in_addr ip_b_src, uint16_t port_b_src,
+                     struct in_addr ip_b_dst, uint16_t port_b_dst) {
+
+  // A little trick to make the one level recursion work
+  static bool second_call = false;
+
+  return (  (ip_a_src.s_addr == ip_b_src.s_addr)
+         && (ip_a_dst.s_addr == ip_b_dst.s_addr)
+         && (port_a_src == port_b_src)
+         && (port_a_src == port_b_src) );
+         //|| ( (!(second_call = !second_call))
+         //&& same_connection(ip_a_src, port_a_src,
+         //                   ip_a_dst, port_a_dst,
+         //                   ip_b_dst, port_b_dst,
+         //                   ip_b_src, port_b_src) );
+}
 
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet);
@@ -92,7 +114,7 @@ int main(int argc, char **argv) {
 
   pcap_loop(handle, -1, got_packet, NULL);
 
-  //printOutput();
+  printOutput();
 
   pcap_close(handle);
 
@@ -109,7 +131,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
   uint32_t ip_header_length;
   struct ip *ip;
   struct TCP_hdr *tcp;
-  bool isNewConnection = true;
+  bool isNewConnection = false;
   struct timeval tmp_time;
   struct timeval tmp_time_2 = header->ts;
   Connection tmp;
@@ -128,7 +150,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
     exit(1);
   }
 
-  /* Skip over the Ethernet header. */
+  // Skip over the Ethernet header.
   packet += sizeof(struct ether_header);
   capture_length -= sizeof(struct ether_header);
 
@@ -139,38 +161,45 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
 
   if (capture_length < ip_header_length) {exit(1);}
 
-  /* Skip over the IP header. */
+  // Skip over the IP header.
   packet += ip_header_length;
   capture_length -= ip_header_length;
 
 	tcp = (struct TCP_hdr*) packet;
-  //ip->ip_hl
-  //tcp->dest;
-  //cout << ip->dest;
 
-  //while (capture_length-- > 0) {
-  //  cout << (char*) packet++;
-  //}
+  // If nothing is in the vector, skip the search step
 
+  //cout << std::to_string(connections.size()) << "sdlkjgnolanhsf";
+  if(connections.size()==0) {isNewConnection = true;}
 
-  printf("%s src_port=%d dst_port=%d length=%d\n",
-		timestamp_string(tmp_time),
-		ntohs(tcp->th_sport),
-		ntohs(tcp->th_dport),
-  capture_length);// ntohs(tcp->uh_ulen)
+  for (size_t i = 0; !isNewConnection || (i < connections.size()); i++) {
+    tmp = *(connections[i]);
 
-
-  for (std::vector<Connection *>::iterator it = connections.begin();
-       it != connections.end(); ++it) {
-    tmp = (**it);
-    if (tmp.sourceAddress.compare("192.168.1.1") != 0) {
-      isNewConnection = false;
+    if (same_connection(ip->ip_src, ntohs(tcp->th_sport),
+                        ip->ip_dst, ntohs(tcp->th_dport),
+                        tmp.sourceAddress, tmp.sourcePort,
+                        tmp.destinationAddress, tmp.destinationPort)) {
+      isNewConnection = true;
+      cout << "true\n";
     }
   }
+/*  cout << std::to_string(ip->ip_src.s_addr) << ", "
+       << std::to_string(ip->ip_dst.s_addr) << ", "
+       << std::to_string(tmp.sourceAddress.s_addr) << ", "
+       << std::to_string(tmp.destinationAddress.s_addr) << "\n";*/
   if (isNewConnection) {
-    tmp.sourceAddress = "192.168.1.1";
-    connections.push_back(&tmp);
+    cout << "NEW CON";
+    usleep(10000);
+    Connection new_connection;
+    new_connection.sourceAddress->s_addr = ip->ip_src.s_addr;
+    new_connection.destinationAddress->s_addr = ip->ip_dst.s_addr;
+    new_connection.sourcePort = ntohs(tcp->th_sport);
+    new_connection.destinationPort = ntohs(tcp->th_dport);
+    connections.push_back(&new_connection);
+    cout << std::to_string(new_connection.destinationAddress.s_addr) << "\n";
   }
+
+
 }
 
 /**
@@ -178,7 +207,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
  */
 void printOutput() {
   std::string result = "";
-  std::size_t n = 3;
+  std::size_t n = connections.size();
 
   result += "\nA) Total number of connections: " + std::to_string(42);
 
@@ -190,7 +219,7 @@ void printOutput() {
   // for (std::vector<int>::iterator it = fifth.begin(); it != fifth.end();
   // ++it)
   for (std::size_t i = 0; i < n; i++) {
-    result += "\n\t            Connection 1:";
+    result += "\n\tConnection " + std::to_string(i) + ":";
     result += "\n\t          Source Address:";
     result += "\n\t     Destination address:";
     result += "\n\t             Source Port:";
@@ -243,7 +272,7 @@ void printOutput() {
   result += "\nMean receive window sizes including both send/received: ";
   result += "\nMaximum receive window sizes including both send/received:";
 
-  std::cout << result;
+  //std::cout << result;
 }
 
 /* Subtract the ‘struct timeval’ values X and Y,

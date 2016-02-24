@@ -14,10 +14,8 @@
 #include "util.hxx"
 
 Connection::Connection() {}
-
-Connection::Connection(const Connection &copy_from) {}
-
-Connection &Connection::operator=(const Connection &copy_from) {
+/*
+Connection::Connection(const Connection &copy_from) {
   sourceAddress = copy_from.sourceAddress;
   destinationAddress = copy_from.destinationAddress;
   sourcePort = copy_from.sourcePort;
@@ -32,6 +30,10 @@ Connection &Connection::operator=(const Connection &copy_from) {
   numberBytesDestinationToSource = copy_from.numberBytesDestinationToSource;
 }
 
+Connection &Connection::operator=(const Connection &copy_from) {
+  return *this;
+}
+*/
 Connection::~Connection() {}
 
 /* Note, this routine returns a pointer into a static buffer, and
