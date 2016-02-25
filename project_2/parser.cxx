@@ -34,54 +34,62 @@
 using namespace std;
 
 struct TCP_hdr {
-  u_short	th_sport;		/* source port */
-	u_short	th_dport;		/* destination port */
-	tcp_seq	th_seq;			/* sequence number */
-	tcp_seq	th_ack;			/* acknowledgement number */
+  u_short th_sport;
+  u_short th_dport;
+  tcp_seq th_seq;
+  tcp_seq th_ack;
 #if BYTE_ORDER == LITTLE_ENDIAN
-	u_char	th_x2:4,		/* (unused) */
-		th_off:4;		/* data offset */
+  u_char th_x2 : 4, th_off : 4;
 #endif
 #if BYTE_ORDER == BIG_ENDIAN
-	u_char	th_off:4,		/* data offset */
-		th_x2:4;		/* (unused) */
+  u_char th_off : 4, th_x2 : 4;
 #endif
-	u_char	th_flags;
-#define	TH_FIN	0x01
-#define	TH_SYN	0x02
-#define	TH_RST	0x04
-#define	TH_PUSH	0x08
-#define	TH_ACK	0x10
-#define	TH_URG	0x20
-	u_short	th_win;			/* window */
-	u_short	th_sum;			/* checksum */
-	u_short	th_urp;			/* urgent pointer */
+  u_char th_flags;
+#define TH_FIN 0x01
+#define TH_SYN 0x02
+#define TH_RST 0x04
+#define TH_PUSH 0x08
+#define TH_ACK 0x10
+#define TH_URG 0x20
+  u_short th_win;
+  u_short th_sum;
+  u_short th_urp;
 };
 
 // Global Variable holding the connection(s) state information
-vector<Connection *> connections;
+std::vector<Connection> connections;
 
 void printOutput();
 
-int timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y);
+int same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
+                    struct in_addr ip_a_dst, uint16_t port_a_dst,
+                    struct in_addr ip_b_src, uint16_t port_b_src,
+                    struct in_addr ip_b_dst, uint16_t port_b_dst);
+
+int same_connection(struct ip * ip, struct TCP_hdr * tcp,
+                    Connection * connection) {
+  return same_connection(ip->ip_src, ntohs(tcp->th_sport), ip->ip_dst,
+    ntohs(tcp->th_dport),
+    connection->get_source_address(),
+    connection->get_source_port(),
+    connection->get_destination_address(),
+    connection->get_destination_port());
+}
 
 int same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
-                     struct in_addr ip_a_dst, uint16_t port_a_dst,
-                     struct in_addr ip_b_src, uint16_t port_b_src,
-                     struct in_addr ip_b_dst, uint16_t port_b_dst) {
+                    struct in_addr ip_a_dst, uint16_t port_a_dst,
+                    struct in_addr ip_b_src, uint16_t port_b_src,
+                    struct in_addr ip_b_dst, uint16_t port_b_dst) {
 
   // A little trick to make the one level recursion work
   static bool second_call = false;
 
-  return (  (ip_a_src.s_addr == ip_b_src.s_addr)
-         && (ip_a_dst.s_addr == ip_b_dst.s_addr)
-         && (port_a_src == port_b_src)
-         && (port_a_src == port_b_src) );
-         //|| ( (!(second_call = !second_call))
-         //&& same_connection(ip_a_src, port_a_src,
-         //                   ip_a_dst, port_a_dst,
-         //                   ip_b_dst, port_b_dst,
-         //                   ip_b_src, port_b_src) );
+  return ((ip_a_src.s_addr == ip_b_src.s_addr) &&
+          (ip_a_dst.s_addr == ip_b_dst.s_addr) && (port_a_src == port_b_src) &&
+          (port_a_dst == port_b_dst)) ||
+         ((!(second_call = !second_call)) &&
+          same_connection(ip_a_src, port_a_src, ip_a_dst, port_a_dst, ip_b_dst,
+                          port_b_dst, ip_b_src, port_b_src));
 }
 
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
@@ -94,31 +102,43 @@ int main(int argc, char **argv) {
   unsigned int packet_counter = 0;
   struct pcap_pkthdr header;
   const u_char *packet;
+  struct bpf_program fp;      /* hold compiled program     */
+  bpf_u_int32 maskp;          /* subnet mask               */
+  bpf_u_int32 netp;           /* ip                        */
 
   if (argc < 2) {
-    fprintf(stderr, "Usage: %s <pcap>\n", argv[0]);
-    return (1);
+    cerr << "Usage: " << argv[0] << "<pcap>\n";
+    return EXIT_FAILURE;
   }
 
-  pcap_t *handle;
+  pcap_t *descr;
   char errbuf[PCAP_ERRBUF_SIZE];
-  handle = pcap_open_offline(argv[1], errbuf);
+  descr = pcap_open_offline(argv[1], errbuf);
 
-  if (handle == NULL) {
-    fprintf(stderr, "Couldn't open pcap file %s: %s\n", argv[1], errbuf);
-    return (2);
+  if (descr == NULL) {
+    cerr << "Couldn't open pcap file" << argv[1] << ": " << errbuf << "\n";
+    return EXIT_FAILURE;
   }
 
-  // pcap_compile (handle, struct bpf_program *fp, char *str, int optimize,
-  // bpf_u_int32 netmask)
+  /* Lets try and compile the program.. non-optimized */
+  if (pcap_compile(descr, &fp, "tcp", 0, netp) == -1) {
+    cerr << "Error calling pcap_compile\n";
+    return EXIT_FAILURE;
+  }
 
-  pcap_loop(handle, -1, got_packet, NULL);
+  /* set the compiled program as the filter */
+  if (pcap_setfilter(descr, &fp) == -1) {
+    cerr << "Error setting filter\n";
+    return EXIT_FAILURE;
+  }
+
+  pcap_loop(descr, -1, got_packet, NULL);
 
   printOutput();
 
-  pcap_close(handle);
+  pcap_close(descr);
 
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 /**
@@ -126,80 +146,66 @@ int main(int argc, char **argv) {
  */
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet) {
-
+  static uint64_t count = 0;
   uint32_t capture_length = header->caplen;
   uint32_t ip_header_length;
   struct ip *ip;
   struct TCP_hdr *tcp;
-  bool isNewConnection = false;
+  bool isNewConnection = true;
   struct timeval tmp_time;
   struct timeval tmp_time_2 = header->ts;
-  Connection tmp;
 
   static struct timeval offset = header->ts;
 
-  if(timeval_subtract(&tmp_time, &tmp_time_2, &offset)==1) {
+  if (timeval_subtract(&tmp_time, &tmp_time_2, &offset) == 1) {
     offset = tmp_time_2;
   }
 
-  //struct timeval ts; /// time stamp /
-  //bpf_u_int32 header.caplen; /// length of portion present /
-  //bpf_u_int32 header.len; /// length this packet (off wire) /
-
   if (capture_length < sizeof(struct ether_header)) {
-    exit(1);
+    return;
   }
 
   // Skip over the Ethernet header.
   packet += sizeof(struct ether_header);
   capture_length -= sizeof(struct ether_header);
 
-  if (capture_length < sizeof(struct ip)) {exit(1);}
+  if (capture_length < sizeof(struct ip)) {
+    return;
+  }
 
-  ip = (struct ip*) packet;
-  ip_header_length = ip->ip_hl * 4;	/* ip_hl is in 4-byte words */
+  ip = (struct ip *)packet;
+  ip_header_length = ip->ip_hl * 4; /* ip_hl is in 4-byte words */
 
-  if (capture_length < ip_header_length) {exit(1);}
+  if (capture_length < ip_header_length) {
+    return;
+  }
 
   // Skip over the IP header.
   packet += ip_header_length;
   capture_length -= ip_header_length;
 
-	tcp = (struct TCP_hdr*) packet;
+  tcp = (struct TCP_hdr *)packet;
 
-  // If nothing is in the vector, skip the search step
-
-  //cout << std::to_string(connections.size()) << "sdlkjgnolanhsf";
-  if(connections.size()==0) {isNewConnection = true;}
-
-  for (size_t i = 0; !isNewConnection || (i < connections.size()); i++) {
-    tmp = *(connections[i]);
-
-    if (same_connection(ip->ip_src, ntohs(tcp->th_sport),
-                        ip->ip_dst, ntohs(tcp->th_dport),
-                        tmp.sourceAddress, tmp.sourcePort,
-                        tmp.destinationAddress, tmp.destinationPort)) {
-      isNewConnection = true;
-      cout << "true\n";
+  for (Connection &tmp : connections) {
+    if (same_connection(ip, tcp, &tmp)) {
+      isNewConnection = false;
+      break;
     }
   }
-/*  cout << std::to_string(ip->ip_src.s_addr) << ", "
-       << std::to_string(ip->ip_dst.s_addr) << ", "
-       << std::to_string(tmp.sourceAddress.s_addr) << ", "
-       << std::to_string(tmp.destinationAddress.s_addr) << "\n";*/
+
   if (isNewConnection) {
-    cout << "NEW CON";
-    usleep(10000);
     Connection new_connection;
-    new_connection.sourceAddress->s_addr = ip->ip_src.s_addr;
-    new_connection.destinationAddress->s_addr = ip->ip_dst.s_addr;
-    new_connection.sourcePort = ntohs(tcp->th_sport);
-    new_connection.destinationPort = ntohs(tcp->th_dport);
-    connections.push_back(&new_connection);
-    cout << std::to_string(new_connection.destinationAddress.s_addr) << "\n";
+    new_connection.set_source_address(ip->ip_src);
+    new_connection.set_destination_address(ip->ip_dst);
+    new_connection.set_source_port(ntohs(tcp->th_sport));
+    new_connection.set_destination_port(ntohs(tcp->th_dport));
+    connections.emplace_back(new_connection);
+    cout << inet_ntoa(new_connection.get_source_address()) << ":"
+         << std::to_string(new_connection.get_source_port()) << ", "
+         << inet_ntoa(new_connection.get_destination_address()) << ":"
+         << std::to_string(new_connection.get_destination_port()) << "|"
+         << std::to_string(connections.size()) << "|\n";
   }
-
-
 }
 
 /**
@@ -272,33 +278,5 @@ void printOutput() {
   result += "\nMean receive window sizes including both send/received: ";
   result += "\nMaximum receive window sizes including both send/received:";
 
-  //std::cout << result;
-}
-
-/* Subtract the ‘struct timeval’ values X and Y,
-   storing the result in RESULT.
-   Return 1 if the difference is negative, otherwise 0. */
-
-int
-timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y)
-{
-  /* Perform the carry for the later subtraction by updating y. */
-  if (x->tv_usec < y->tv_usec) {
-    int nsec = (y->tv_usec - x->tv_usec) / 1000000 + 1;
-    y->tv_usec -= 1000000 * nsec;
-    y->tv_sec += nsec;
-  }
-  if (x->tv_usec - y->tv_usec > 1000000) {
-    int nsec = (x->tv_usec - y->tv_usec) / 1000000;
-    y->tv_usec += 1000000 * nsec;
-    y->tv_sec -= nsec;
-  }
-
-  /* Compute the time remaining to wait.
-     tv_usec is certainly positive. */
-  result->tv_sec = x->tv_sec - y->tv_sec;
-  result->tv_usec = x->tv_usec - y->tv_usec;
-
-  /* Return 1 if result is negative. */
-  return x->tv_sec < y->tv_sec;
+  // std::cout << result;
 }
