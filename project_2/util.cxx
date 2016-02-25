@@ -14,6 +14,13 @@
 #include "util.hxx"
 
 Connection::Connection() {}
+
+Connection::Connection(struct ip *ip, struct TCP_hdr *tcp) {
+  set_source_address(ip->ip_src);
+  set_destination_address(ip->ip_dst);
+  set_source_port(ntohs(tcp->th_sport));
+  set_destination_port(ntohs(tcp->th_dport));
+}
 /*
 Connection::Connection(const Connection &copy_from) {
   this->sourceAddress = copy_from.sourceAddress;
@@ -23,11 +30,15 @@ Connection::Connection(const Connection &copy_from) {
   this->endTime = copy_from.endTime;
   this->duration = copy_from.duration;
 
-  this->numberPacketsSourceToDestination = copy_from.numberPacketsSourceToDestination;
-  this->numberPacketsDestinationToSource = copy_from.numberPacketsDestinationToSource;
+  this->numberPacketsSourceToDestination =
+copy_from.numberPacketsSourceToDestination;
+  this->numberPacketsDestinationToSource =
+copy_from.numberPacketsDestinationToSource;
 
-  this->numberBytesSourceToDestination = copy_from.numberBytesSourceToDestination;
-  this->numberBytesDestinationToSource = copy_from.numberBytesDestinationToSource;
+  this->numberBytesSourceToDestination =
+copy_from.numberBytesSourceToDestination;
+  this->numberBytesDestinationToSource =
+copy_from.numberBytesDestinationToSource;
 }*/
 /*
 Connection &Connection::operator=(const Connection &copy_from) {
@@ -54,10 +65,10 @@ void Connection::set_source_address(struct in_addr new_value) {
 void Connection::set_destination_address(struct in_addr new_value) {
   this->destinationAddress = new_value;
 }
-void Connection::set_source_port(uint16_t new_value){
+void Connection::set_source_port(uint16_t new_value) {
   this->sourcePort = new_value;
 }
-void Connection::set_destination_port(uint16_t new_value){
+void Connection::set_destination_port(uint16_t new_value) {
   this->destinationPort = new_value;
 }
 void Connection::set_end_time(struct timeval new_value) {
@@ -85,12 +96,8 @@ struct in_addr Connection::get_source_address() {
 struct in_addr Connection::get_destination_address() {
   return this->destinationAddress;
 }
-uint16_t Connection::get_source_port() {
-  return this->sourcePort;
-}
-uint16_t Connection::get_destination_port() {
-  return this->destinationPort;
-}
+uint16_t Connection::get_source_port() { return this->sourcePort; }
+uint16_t Connection::get_destination_port() { return this->destinationPort; }
 struct timeval Connection::get_end_time() {
   return this->endTime;
 }
@@ -110,10 +117,20 @@ uint64_t Connection::get_number_bytes_destination_to_source() {
   return this->numberBytesDestinationToSource;
 }
 
+void Connection::add_packet(struct ip *ip, struct TCP_hdr *tcp) {
+  this->ip_packet_headers.emplace_back(ip);
+  this->tcp_packet_headers.emplace_back(tcp);
+}
 
+uint32_t Connection::get_number_packets() {
+  return get_number_packets_source_to_destination() +
+         get_number_packets_destination_to_source();
+}
 
-
-
+uint64_t Connection::get_number_bytes() {
+  return get_number_bytes_source_to_destination() +
+         get_number_bytes_destination_to_source();
+}
 
 /* Note, this routine returns a pointer into a static buffer, and
  * so each call overwrites the value returned by the previous call.
@@ -151,4 +168,37 @@ int timeval_subtract(struct timeval *result, struct timeval *x,
 
   /* Return 1 if result is negative. */
   return x->tv_sec < y->tv_sec;
+}
+
+int _is_same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
+                        struct in_addr ip_a_dst, uint16_t port_a_dst,
+                        struct in_addr ip_b_src, uint16_t port_b_src,
+                        struct in_addr ip_b_dst, uint16_t port_b_dst,
+                        bool recursion) {
+  return ((ip_a_src.s_addr == ip_b_src.s_addr) &&
+          (ip_a_dst.s_addr == ip_b_dst.s_addr) && (port_a_src == port_b_src) &&
+          (port_a_dst == port_b_dst)) ||
+         (recursion && _is_same_connection(ip_a_src, port_a_src, ip_a_dst,
+                                           port_a_dst, ip_b_dst, port_b_dst,
+                                           ip_b_src, port_b_src, false));
+}
+
+int is_same_connection(struct ip *ip, struct TCP_hdr *tcp,
+                       Connection *connection) {
+  return _is_same_connection(
+      ip->ip_src, ntohs(tcp->th_sport), ip->ip_dst, ntohs(tcp->th_dport),
+      connection->get_source_address(), connection->get_source_port(),
+      connection->get_destination_address(), connection->get_destination_port(),
+      false);
+}
+
+bool is_same_connection(Connection *a, Connection *b, bool mirror) {
+  return _is_same_connection(a->get_source_address(), a->get_source_port(),
+                             a->get_destination_address(),
+                             a->get_destination_port(), b->get_source_address(),
+                             b->get_source_port(), b->get_destination_address(),
+                             b->get_destination_port(), mirror);
+}
+bool is_same_connection(Connection *a, Connection *b) {
+  return is_same_connection(a, b, true);
 }

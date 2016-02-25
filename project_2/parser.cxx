@@ -12,85 +12,14 @@
  ******************************************************************************/
 
 #include "util.hxx"
-
-#include <stdio.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <net/if.h>
-#include <netinet/if_ether.h>
-#include <pcap.h>
-#include <cstring>
-
-#include <sys/socket.h>
-#include <arpa/inet.h>
-
-#include <netinet/tcp.h>
-//#include <time.h>
-
-#include <iostream>
-#include <string>
-#include <vector>
 using namespace std;
 
-struct TCP_hdr {
-  u_short th_sport;
-  u_short th_dport;
-  tcp_seq th_seq;
-  tcp_seq th_ack;
-#if BYTE_ORDER == LITTLE_ENDIAN
-  u_char th_x2 : 4, th_off : 4;
-#endif
-#if BYTE_ORDER == BIG_ENDIAN
-  u_char th_off : 4, th_x2 : 4;
-#endif
-  u_char th_flags;
-#define TH_FIN 0x01
-#define TH_SYN 0x02
-#define TH_RST 0x04
-#define TH_PUSH 0x08
-#define TH_ACK 0x10
-#define TH_URG 0x20
-  u_short th_win;
-  u_short th_sum;
-  u_short th_urp;
-};
+
 
 // Global Variable holding the connection(s) state information
 std::vector<Connection> connections;
 
 void printOutput();
-
-int same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
-                    struct in_addr ip_a_dst, uint16_t port_a_dst,
-                    struct in_addr ip_b_src, uint16_t port_b_src,
-                    struct in_addr ip_b_dst, uint16_t port_b_dst);
-
-int same_connection(struct ip * ip, struct TCP_hdr * tcp,
-                    Connection * connection) {
-  return same_connection(ip->ip_src, ntohs(tcp->th_sport), ip->ip_dst,
-    ntohs(tcp->th_dport),
-    connection->get_source_address(),
-    connection->get_source_port(),
-    connection->get_destination_address(),
-    connection->get_destination_port());
-}
-
-int same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
-                    struct in_addr ip_a_dst, uint16_t port_a_dst,
-                    struct in_addr ip_b_src, uint16_t port_b_src,
-                    struct in_addr ip_b_dst, uint16_t port_b_dst) {
-
-  // A little trick to make the one level recursion work
-  static bool second_call = false;
-
-  return ((ip_a_src.s_addr == ip_b_src.s_addr) &&
-          (ip_a_dst.s_addr == ip_b_dst.s_addr) && (port_a_src == port_b_src) &&
-          (port_a_dst == port_b_dst)) ||
-         ((!(second_call = !second_call)) &&
-          same_connection(ip_a_src, port_a_src, ip_a_dst, port_a_dst, ip_b_dst,
-                          port_b_dst, ip_b_src, port_b_src));
-}
 
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet);
@@ -102,9 +31,9 @@ int main(int argc, char **argv) {
   unsigned int packet_counter = 0;
   struct pcap_pkthdr header;
   const u_char *packet;
-  struct bpf_program fp;      /* hold compiled program     */
-  bpf_u_int32 maskp;          /* subnet mask               */
-  bpf_u_int32 netp;           /* ip                        */
+  struct bpf_program fp; /* hold compiled program     */
+  bpf_u_int32 maskp;     /* subnet mask               */
+  bpf_u_int32 netp;      /* ip                        */
 
   if (argc < 2) {
     cerr << "Usage: " << argv[0] << "<pcap>\n";
@@ -186,25 +115,27 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
 
   tcp = (struct TCP_hdr *)packet;
 
-  for (Connection &tmp : connections) {
-    if (same_connection(ip, tcp, &tmp)) {
-      isNewConnection = false;
-      break;
+  packet += tcp->th_off * 4;
+  capture_length -= tcp->th_off * 4;
+  Connection tmp_1;
+  for (Connection &tmp_2 : connections) {
+    // TODO MEMORY LEAK
+    tmp_1 = Connection(ip, tcp);
+    isNewConnection = (isNewConnection && !is_same_connection(&tmp_1, &tmp_2));
+
+    if (is_same_connection(&tmp_1, &tmp_2) &&
+        !is_same_connection(&tmp_1, &tmp_2, false) ) {
+      tmp_2.set_number_packets_source_to_destination(tmp_2.get_number_packets_source_to_destination()+1);
+    } else if (is_same_connection(&tmp_1, &tmp_2, false)) {
+      tmp_2.set_number_packets_destination_to_source(tmp_2.get_number_packets_destination_to_source()+1);
+    } else {
+
     }
   }
 
   if (isNewConnection) {
-    Connection new_connection;
-    new_connection.set_source_address(ip->ip_src);
-    new_connection.set_destination_address(ip->ip_dst);
-    new_connection.set_source_port(ntohs(tcp->th_sport));
-    new_connection.set_destination_port(ntohs(tcp->th_dport));
+    Connection new_connection = Connection(ip, tcp);
     connections.emplace_back(new_connection);
-    cout << inet_ntoa(new_connection.get_source_address()) << ":"
-         << std::to_string(new_connection.get_source_port()) << ", "
-         << inet_ntoa(new_connection.get_destination_address()) << ":"
-         << std::to_string(new_connection.get_destination_port()) << "|"
-         << std::to_string(connections.size()) << "|\n";
   }
 }
 
@@ -213,70 +144,91 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
  */
 void printOutput() {
   std::string result = "";
-  std::size_t n = connections.size();
+  std::size_t n = 0;
 
-  result += "\nA) Total number of connections: " + std::to_string(42);
+  cout << "\nA) Total number of connections: " +
+              std::to_string(connections.size());
 
-  result += "\n----------------------------------------------------------------"
-            "----------------\n";
+  cout << "\n----------------------------------------------------------------"
+          "----------------\n";
 
-  result += "\nB) Connections' details:\n";
+  cout << "\nB) Connections' details:\n";
 
   // for (std::vector<int>::iterator it = fifth.begin(); it != fifth.end();
   // ++it)
-  for (std::size_t i = 0; i < n; i++) {
-    result += "\n\tConnection " + std::to_string(i) + ":";
-    result += "\n\t          Source Address:";
-    result += "\n\t     Destination address:";
-    result += "\n\t             Source Port:";
-    result += "\n\tDestination Port: Status:";
+
+  for (Connection i : connections) {
+    cout << "\n\tConnection " << std::to_string(++n) << ":";
+
+    cout << "\n\t     Source Address: " << inet_ntoa(i.get_source_address());
+    cout << "\n\tDestination Address: "
+         << inet_ntoa(i.get_destination_address());
+    cout << "\n\t        Source Port: " << std::to_string(i.get_source_port());
+    cout << "\n\t   Destination Port: "
+         << std::to_string(i.get_destination_port());
+
+    cout << "\n\t             Status: ";
 
     // (Only if the connection is complete provide the following information)
     // Start time:
-    result += "\n\t                                       End Time:";
-    result += "\n\t                                       Duration:";
-    result += "\n\t   # of packets sent from Source to Destination:";
-    result += "\n\t   # of packets sent from Destination to Source:";
-    result += "\n\t                        Total number of packets:";
-    result += "\n\t# of data bytes sent from Source to Destination:";
-    result += "\n\t# of data bytes sent from Destination to Source:";
-    result += "\n\t                     Total number of data bytes:";
-    result += "\n\tEND";
+    cout << "\n\t                                       End Time:";
+    cout << "\n\t                                       Duration:";
+    cout << "\n\t   # of packets sent from Source to Destination:" << std::to_string(i.get_number_packets_source_to_destination());
+    cout << "\n\t   # of packets sent from Destination to Source:" << std::to_string(i.get_number_packets_destination_to_source());
+    cout << "\n\t                        Total number of packets:";
+    cout << "\n\t# of data bytes sent from Source to Destination:";
+    cout << "\n\t# of data bytes sent from Destination to Source:";
+    cout << "\n\t                     Total number of data bytes:";
+    cout << "\n\tEND";
 
-    if (n - i > 1)
-      result +=
-          "\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-          "++++++++++++++";
+    if (n - connections.size() > 0)
+        cout << "\n" << std::string(80, '+');
   }
 
-  result += "\n----------------------------------------------------------------"
-            "----------------\n";
+  cout << "\n" << std::string(80, '-') << "\n";
 
-  result += "\nC) General\n";
-  result += "\nTotal number of complete TCP connections:";
-  result += "\nNumber of reset TCP connections:";
-  result += "\nNumber of TCP connections that were still open when the trace "
-            "capture ended:";
+  cout << "\nC) General\n";
+  cout << "\nTotal number of complete TCP connections:";
+  cout << "\nNumber of reset TCP connections:";
+  cout << "\nNumber of TCP connections that were still open when the trace "
+          "capture ended:";
 
-  result += "\n----------------------------------------------------------------"
-            "----------------\n";
+  cout << "\n" << std::string(80, '-') << "\n";
 
-  result += "\nD) Complete TCP connections:\n";
-  result += "\nMinimum time durations: ";
-  result += "\nMean time durations: ";
-  result += "\nMaximum time durations:";
+  uint64_t value;
 
-  result += "\nMinimum RTT values including both send/received: ";
-  result += "\nMean RTT values including both send/received: ";
-  result += "\nMaximum RTT values including both send/received:";
+  cout << "\nD) Complete TCP connections:\n";
+  cout << "\nMinimum time durations: ";
+  cout << "\nMean time durations: ";
+  cout << "\nMaximum time durations:";
 
-  result += "\nMinimum number of packets including both send/received: ";
-  result += "\nMean number of packets including both send/received: ";
-  result += "\nMaximum number of packets including both send/received:";
+  cout << "\nMinimum RTT values including both send/received: ";
+  cout << "\nMean RTT values including both send/received: ";
+  cout << "\nMaximum RTT values including both send/received:";
 
-  result += "\nMinimum receive window sizes including both send/received: ";
-  result += "\nMean receive window sizes including both send/received: ";
-  result += "\nMaximum receive window sizes including both send/received:";
+  cout << "\nMinimum number of packets including both send/received: ";
+  value = connections.front().get_number_packets();
+  for (Connection i : connections)
+    if(value > i.get_number_packets())
+      value = i.get_number_packets();
+  cout << std::to_string(value);
 
-  // std::cout << result;
+
+  cout << "\nMean number of packets including both send/received: ";
+  value = connections.front().get_number_packets();
+  for (Connection i : connections)
+    value += i.get_number_packets();
+  cout << std::to_string(value/((double) connections.size()));
+
+  cout << "\nMaximum number of packets including both send/received:";
+  value = connections.front().get_number_packets();
+  for (Connection i : connections)
+    if(value < i.get_number_packets())
+      value = i.get_number_packets();
+  cout << std::to_string(value);
+
+  cout << "\nMinimum receive window sizes including both send/received: ";
+  cout << "\nMean receive window sizes including both send/received: ";
+  cout << "\nMaximum receive window sizes including both send/received:";
+
 }
