@@ -20,43 +20,20 @@ Connection::Connection(struct ip *ip, struct TCP_hdr *tcp) {
   set_destination_address(ip->ip_dst);
   set_source_port(ntohs(tcp->th_sport));
   set_destination_port(ntohs(tcp->th_dport));
+  ip_packet_headers.emplace_back(ip);
+  tcp_packet_headers.emplace_back(tcp);
 }
-/*
-Connection::Connection(const Connection &copy_from) {
-  this->sourceAddress = copy_from.sourceAddress;
-  this->destinationAddress = copy_from.destinationAddress;
-  this->sourcePort = copy_from.sourcePort;
-  this->destinationPort = copy_from.destinationPort;
-  this->endTime = copy_from.endTime;
-  this->duration = copy_from.duration;
 
-  this->numberPacketsSourceToDestination =
-copy_from.numberPacketsSourceToDestination;
-  this->numberPacketsDestinationToSource =
-copy_from.numberPacketsDestinationToSource;
-
-  this->numberBytesSourceToDestination =
-copy_from.numberBytesSourceToDestination;
-  this->numberBytesDestinationToSource =
-copy_from.numberBytesDestinationToSource;
-}*/
-/*
-Connection &Connection::operator=(const Connection &copy_from) {
-  sourceAddress = copy_from.sourceAddress;
-  destinationAddress = copy_from.destinationAddress;
-  sourcePort = copy_from.sourcePort;
-  destinationPort = copy_from.destinationPort;
-  endTime = copy_from.endTime;
-  duration = copy_from.duration;
-
-  numberPacketsSourceToDestination = copy_from.numberPacketsSourceToDestination;
-  numberPacketsDestinationToSource = copy_from.numberPacketsDestinationToSource;
-
-  numberBytesSourceToDestination = copy_from.numberBytesSourceToDestination;
-  numberBytesDestinationToSource = copy_from.numberBytesDestinationToSource;
-  return *this;
+Connection::Connection(struct ip *ip, struct TCP_hdr *tcp, struct pcap_pkthdr * pcap) {
+  set_source_address(ip->ip_src);
+  set_destination_address(ip->ip_dst);
+  set_source_port(ntohs(tcp->th_sport));
+  set_destination_port(ntohs(tcp->th_dport));
+  ip_packet_headers.emplace_back(ip);
+  tcp_packet_headers.emplace_back(tcp);
+  pcap_packet_headers.emplace_back(pcap);
 }
-*/
+
 Connection::~Connection() {}
 
 void Connection::set_source_address(struct in_addr new_value) {
@@ -97,13 +74,54 @@ struct in_addr Connection::get_destination_address() {
   return this->destinationAddress;
 }
 uint16_t Connection::get_source_port() { return this->sourcePort; }
+
 uint16_t Connection::get_destination_port() { return this->destinationPort; }
+
 struct timeval Connection::get_end_time() {
-  return this->endTime;
+  /*
+  struct timeval * result;
+  struct timeval * max = &(pcap_packet_headers.front()->ts);
+  for (struct pcap_pkthdr * i : pcap_packet_headers) {
+    if(timeval_subtract(result, max, &(i->ts))==1) max = &(i->ts);
+  }
+  return *max;
+  */
+  return timeval_of_packets.back();
 }
+
+bool Connection::get_duration(struct timeval * result) {
+  //timestamp_string((struct timeval) {i.timeval_of_packets.back().tv_sec-i.timeval_of_packets.front().tv_sec, i.timeval_of_packets.back().tv_usec-i.timeval_of_packets.front().tv_usec})
+  //struct timeval * min = &(pcap_packet_headers.front()->ts);
+  //struct timeval * max = &(pcap_packet_headers.front()->ts);
+  //struct timeval min = timeval_of_packets.front();
+  //struct timeval max;
+  //timeval_subtract(result, &max, &min);
+  /*for (struct pcap_pkthdr * i : pcap_packet_headers) {
+    if(timeval_subtract(result, &(i->ts), min)==1) min = &(i->ts);
+    if(timeval_subtract(result, max, &(i->ts))==1) max = &(i->ts);
+  }*/
+  //return (bool) timeval_subtract(result, max, min);
+  return true;
+}
+
 struct timeval Connection::get_duration() {
-  return this->duration;
+  time_t tv_sec_a = timeval_of_packets.front().tv_sec;
+  uint32_t tv_usec_a = timeval_of_packets.front().tv_usec;
+  time_t tv_sec_b = timeval_of_packets.back().tv_sec;
+  uint32_t tv_usec_b = timeval_of_packets.back().tv_usec;
+
+  return (struct timeval) {
+    tv_sec_a - tv_sec_b,
+    //(int)(1000000-tv_usec_a-tv_usec_a)
+    (int)(tv_usec_a-tv_usec_a>=0)?(tv_usec_a-tv_usec_a):(1000000-tv_usec_a-tv_usec_a)
+  };
+  /*
+  return (struct timeval) {
+    abs(timeval_of_packets.back().tv_sec-timeval_of_packets.front().tv_sec),
+    abs(timeval_of_packets.back().tv_usec-timeval_of_packets.front().tv_usec)
+  };*/
 }
+
 uint32_t Connection::get_number_packets_source_to_destination() {
   return this->numberPacketsSourceToDestination;
 }
@@ -138,7 +156,7 @@ uint64_t Connection::get_number_bytes() {
 const char *timestamp_string(struct timeval ts) {
   static char timestamp_string_buf[256];
 
-  sprintf(timestamp_string_buf, "%d.%06d", (int)ts.tv_sec, (int)ts.tv_usec);
+  sprintf(timestamp_string_buf, "%6d.%06d", (int)ts.tv_sec, (int)ts.tv_usec);
 
   return timestamp_string_buf;
 }
@@ -201,4 +219,48 @@ bool is_same_connection(Connection *a, Connection *b, bool mirror) {
 }
 bool is_same_connection(Connection *a, Connection *b) {
   return is_same_connection(a, b, true);
+}
+
+/**
+ * @param {vector<Conection>}
+ * @param {std::function}
+ * function f should be of the format:
+ * [](Connection * c) {return c.%parameter%}
+ */
+std::string avg(std::vector<Connection> *vec,
+                std::function<uint64_t(Connection)> f) {
+  uint64_t value = f(vec->front());
+  for (Connection i : *vec)
+    value += f(i);
+  return std::to_string(value / ((double)vec->size()));
+}
+
+/**
+ * @param {vector<Conection>}
+ * @param {std::function}
+ * function f should be of the format:
+ * [](Connection * c) {return c.%parameter%}
+ */
+std::string max(std::vector<Connection> *vec,
+                std::function<uint64_t(Connection)> f) {
+  uint64_t value = f(vec->front());
+  for (Connection i : *vec)
+    if (value < f(i))
+      value = f(i);
+  return std::to_string(value);
+}
+
+/**
+ * @param {vector<Conection>}
+ * @param {std::function}
+ * function f should be of the format:
+ * [](Connection * c) {return c.%parameter%}
+ */
+std::string min(std::vector<Connection> *vec,
+                std::function<uint64_t(Connection)> f) {
+  uint64_t value = f(vec->front());
+  for (Connection i : *vec)
+    if (value > f(i))
+      value = f(i);
+  return std::to_string(value);
 }

@@ -3,27 +3,32 @@
 #ifndef _UTIL_HXX
 #define _UTIL_HXX
 
+//#include <stdio.h>
+//#include <unistd.h>
+//#include <netinet/in.h>
+
+//#include <net/if.h>
+
 #include <netinet/ip.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <net/if.h>
 #include <netinet/if_ether.h>
 #include <pcap.h>
 
+/******************************************************************************/
+#include <sys/time.h>
+#include <stdlib.h>
+/******************************************************************************/
 
-#include <sys/socket.h>
+//#include <sys/socket.h>
+
 #include <arpa/inet.h>
-
 #include <netinet/tcp.h>
 
-#include <cstring>
+//#include <cstring>
 #include <iostream>
-#include <string>
+//#include <string>
 #include <vector>
-#include <ctime>
-#include <cstdint>
+//#include <ctime>
+//#include <cstdint>
 
 struct TCP_hdr {
   u_short th_sport;
@@ -61,22 +66,14 @@ public:                       // begin public section
   Connection(); // constructor
 
   Connection(struct ip *ip, struct TCP_hdr *tcp);
+
+  Connection(struct ip *ip, struct TCP_hdr *tcp, struct pcap_pkthdr * pcap);
+
   //Connection(const Connection &copy_from); // copy constructor
+
   //Connection &operator=(const Connection &copy_from); // copy assignment
+
   ~Connection(); // destructor
-
-  struct in_addr sourceAddress;
-  struct in_addr destinationAddress;
-  uint16_t sourcePort;
-  uint16_t destinationPort;
-  struct timeval endTime;
-  struct timeval duration;
-
-  uint32_t numberPacketsSourceToDestination;
-  uint32_t numberPacketsDestinationToSource;
-
-  uint64_t numberBytesSourceToDestination;
-  uint64_t numberBytesDestinationToSource;
 
 
   void set_source_address(struct in_addr new_address);
@@ -94,8 +91,11 @@ public:                       // begin public section
   struct in_addr get_destination_address();
   uint16_t get_source_port();
   uint16_t get_destination_port();
+
   struct timeval get_end_time();
-  struct timeval get_duration();
+
+  bool get_duration(struct timeval * result);
+
   uint32_t get_number_packets_source_to_destination();
   uint32_t get_number_packets_destination_to_source();
   uint64_t get_number_bytes_source_to_destination();
@@ -104,10 +104,31 @@ public:                       // begin public section
   void add_packet(struct ip *ip, struct TCP_hdr *tcp);
   uint32_t get_number_packets();
   uint64_t get_number_bytes();
+  struct timeval get_duration();
 
-private:
   std::vector<struct ip *> ip_packet_headers;
   std::vector<struct TCP_hdr *> tcp_packet_headers;
+
+  // NOTE: consider using pointer here
+  std::vector<struct timeval> timeval_of_packets;
+  std::vector<struct pcap_pkthdr *> pcap_packet_headers;
+
+protected:
+  struct in_addr sourceAddress;
+  struct in_addr destinationAddress;
+  uint16_t sourcePort;
+  uint16_t destinationPort;
+  struct timeval endTime;
+  struct timeval duration;
+
+  uint32_t numberPacketsSourceToDestination;
+  uint32_t numberPacketsDestinationToSource;
+
+  uint64_t numberBytesSourceToDestination;
+  uint64_t numberBytesDestinationToSource;
+
+private:
+
 
 };
 
@@ -124,6 +145,12 @@ int is_same_connection(struct ip *ip, struct TCP_hdr *tcp, Connection *connectio
 bool is_same_connection(Connection * a, Connection * b, bool mirror);
 
 bool is_same_connection(Connection * a, Connection * b);
+
+std::string avg(std::vector<Connection> * vec, std::function<uint64_t(Connection)> f);
+
+std::string max(std::vector<Connection> * vec, std::function<uint64_t(Connection)> f);
+
+std::string min(std::vector<Connection> * vec, std::function<uint64_t(Connection)> f);
 
 #endif
 

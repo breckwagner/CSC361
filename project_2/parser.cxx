@@ -14,8 +14,6 @@
 #include "util.hxx"
 using namespace std;
 
-
-
 // Global Variable holding the connection(s) state information
 std::vector<Connection> connections;
 
@@ -123,18 +121,27 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
     tmp_1 = Connection(ip, tcp);
     isNewConnection = (isNewConnection && !is_same_connection(&tmp_1, &tmp_2));
 
-    if (is_same_connection(&tmp_1, &tmp_2) &&
-        !is_same_connection(&tmp_1, &tmp_2, false) ) {
-      tmp_2.set_number_packets_source_to_destination(tmp_2.get_number_packets_source_to_destination()+1);
-    } else if (is_same_connection(&tmp_1, &tmp_2, false)) {
-      tmp_2.set_number_packets_destination_to_source(tmp_2.get_number_packets_destination_to_source()+1);
-    } else {
+    if (is_same_connection(&tmp_1, &tmp_2)) {
+      tmp_2.timeval_of_packets.emplace_back(tmp_time);
+    }
 
+    if (is_same_connection(&tmp_1, &tmp_2) &&
+        !is_same_connection(&tmp_1, &tmp_2, false)) {
+
+      tmp_2.set_number_packets_source_to_destination(
+          tmp_2.get_number_packets_source_to_destination() + 1);
+
+    } else if (is_same_connection(&tmp_1, &tmp_2, false)) {
+
+      tmp_2.set_number_packets_destination_to_source(
+          tmp_2.get_number_packets_destination_to_source() + 1);
     }
   }
 
   if (isNewConnection) {
     Connection new_connection = Connection(ip, tcp);
+    // NOTE: emblace should copy
+    new_connection.timeval_of_packets.emplace_back(tmp_time);
     connections.emplace_back(new_connection);
   }
 }
@@ -143,7 +150,6 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
  * Prints the statistics from the TCP trace file parser to the screen
  */
 void printOutput() {
-  std::string result = "";
   std::size_t n = 0;
 
   cout << "\nA) Total number of connections: " +
@@ -171,18 +177,41 @@ void printOutput() {
 
     // (Only if the connection is complete provide the following information)
     // Start time:
-    cout << "\n\t                                       End Time:";
-    cout << "\n\t                                       Duration:";
-    cout << "\n\t   # of packets sent from Source to Destination:" << std::to_string(i.get_number_packets_source_to_destination());
-    cout << "\n\t   # of packets sent from Destination to Source:" << std::to_string(i.get_number_packets_destination_to_source());
-    cout << "\n\t                        Total number of packets:";
-    cout << "\n\t# of data bytes sent from Source to Destination:";
-    cout << "\n\t# of data bytes sent from Destination to Source:";
-    cout << "\n\t                     Total number of data bytes:";
+    cout << "\n\t                                       End Time: ";
+    cout << timestamp_string(i.get_end_time());
+
+    cout << "\n\t                                       Duration: ";
+    cout << timestamp_string(i.get_duration());
+    // cout <<//timestamp_string((struct timeval)
+    // {i.timeval_of_packets.back().tv_sec-i.timeval_of_packets.front().tv_sec,
+    // i.timeval_of_packets.back().tv_usec-i.timeval_of_packets.front().tv_usec});
+
+    // TODO pcap_packet_headers cant be assigned because initial value of
+    // headers is const
+    // struct timeval * res;
+    // struct timeval min = (i.pcap_packet_headers.front()->ts);
+    // struct timeval max = (i.pcap_packet_headers.front()->ts);
+    // timeval_subtract(res, max, min);
+    // i.get_duration(&res);
+    // cout << timestamp_string(min);
+
+    cout << "\n\t   # of packets sent from Source to Destination: "
+         << std::to_string(i.get_number_packets_source_to_destination());
+         
+    cout << "\n\t   # of packets sent from Destination to Source: "
+         << std::to_string(i.get_number_packets_destination_to_source());
+
+    cout << "\n\t                        Total number of packets: " <<
+    std::to_string(i.get_number_packets_source_to_destination() +
+                   i.get_number_packets_destination_to_source());
+
+    cout << "\n\t# of data bytes sent from Source to Destination: ";
+    cout << "\n\t# of data bytes sent from Destination to Source: ";
+    cout << "\n\t                     Total number of data bytes: ";
     cout << "\n\tEND";
 
     if (n - connections.size() > 0)
-        cout << "\n" << std::string(80, '+');
+      cout << "\n" << std::string(80, '+');
   }
 
   cout << "\n" << std::string(80, '-') << "\n";
@@ -196,39 +225,53 @@ void printOutput() {
   cout << "\n" << std::string(80, '-') << "\n";
 
   uint64_t value;
+  struct timeval *result;
 
   cout << "\nD) Complete TCP connections:\n";
-  cout << "\nMinimum time durations: ";
-  cout << "\nMean time durations: ";
-  cout << "\nMaximum time durations:";
+  /*
+    cout << "\nMinimum time durations: ";
+    cout << min(&connections, [](Connection c) {
+      struct timeval * result;
+      c.get_duration(result);
+      return result->;
+    });
+
+    cout << "\nMean time durations: ";
+    cout << min(&connections, [](Connection c) {
+      struct timeval * result;
+      c.get_duration(result);
+      return timestamp_string(result);
+    });
+
+    cout << "\nMaximum time durations:";
+    cout << max(&connections, [](Connection c) {
+      struct timeval * result;
+      c.get_duration(result);
+      return timestamp_string(result);
+    });
+  */
 
   cout << "\nMinimum RTT values including both send/received: ";
   cout << "\nMean RTT values including both send/received: ";
   cout << "\nMaximum RTT values including both send/received:";
 
   cout << "\nMinimum number of packets including both send/received: ";
-  value = connections.front().get_number_packets();
-  for (Connection i : connections)
-    if(value > i.get_number_packets())
-      value = i.get_number_packets();
-  cout << std::to_string(value);
-
+  cout << min(&connections,
+              [](Connection c) { return c.get_number_packets(); });
 
   cout << "\nMean number of packets including both send/received: ";
-  value = connections.front().get_number_packets();
-  for (Connection i : connections)
-    value += i.get_number_packets();
-  cout << std::to_string(value/((double) connections.size()));
+  cout << avg(&connections,
+              [](Connection c) { return c.get_number_packets(); });
 
   cout << "\nMaximum number of packets including both send/received:";
-  value = connections.front().get_number_packets();
-  for (Connection i : connections)
-    if(value < i.get_number_packets())
-      value = i.get_number_packets();
-  cout << std::to_string(value);
+  cout << max(&connections,
+              [](Connection c) { return c.get_number_packets(); });
 
   cout << "\nMinimum receive window sizes including both send/received: ";
+
   cout << "\nMean receive window sizes including both send/received: ";
+
   cout << "\nMaximum receive window sizes including both send/received:";
 
+  cout << "\n\n";
 }

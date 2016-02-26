@@ -32,3 +32,42 @@ printf("%s src_port=%d dst_port=%d length=%d\n",
   ntohs(tcp->th_sport),
   ntohs(tcp->th_dport),
 capture_length);// ntohs(tcp->uh_ulen)
+
+
+
+/*
+Connection::Connection(const Connection &copy_from) {
+  this->sourceAddress = copy_from.sourceAddress;
+  this->destinationAddress = copy_from.destinationAddress;
+  this->sourcePort = copy_from.sourcePort;
+  this->destinationPort = copy_from.destinationPort;
+  this->endTime = copy_from.endTime;
+  this->duration = copy_from.duration;
+
+  this->numberPacketsSourceToDestination =
+copy_from.numberPacketsSourceToDestination;
+  this->numberPacketsDestinationToSource =
+copy_from.numberPacketsDestinationToSource;
+
+  this->numberBytesSourceToDestination =
+copy_from.numberBytesSourceToDestination;
+  this->numberBytesDestinationToSource =
+copy_from.numberBytesDestinationToSource;
+}*/
+/*
+Connection &Connection::operator=(const Connection &copy_from) {
+  sourceAddress = copy_from.sourceAddress;
+  destinationAddress = copy_from.destinationAddress;
+  sourcePort = copy_from.sourcePort;
+  destinationPort = copy_from.destinationPort;
+  endTime = copy_from.endTime;
+  duration = copy_from.duration;
+
+  numberPacketsSourceToDestination = copy_from.numberPacketsSourceToDestination;
+  numberPacketsDestinationToSource = copy_from.numberPacketsDestinationToSource;
+
+  numberBytesSourceToDestination = copy_from.numberBytesSourceToDestination;
+  numberBytesDestinationToSource = copy_from.numberBytesDestinationToSource;
+  return *this;
+}
+*/
