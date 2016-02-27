@@ -55,3 +55,5 @@ int timeval_subtract(struct timeval *result, struct timeval *x,
 additionally, because no output format was specified for times, I have been outputting them using the method from the example Berkley code:
 
 const char *timestamp_string(struct timeval ts);
+
+I was not sure what was meant by the term data bytes in the assignment spec so I made the assumption that it includes the size of the header because wiresharks implementation does it that way but i implemented a method that gets the size of the payload without the header called "get_payload_size" in the util.cxx file.

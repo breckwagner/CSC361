@@ -16,6 +16,7 @@
 /******************************************************************************/
 #include <sys/time.h>
 #include <stdlib.h>
+#include <assert.h>
 /******************************************************************************/
 
 //#include <sys/socket.h>
@@ -54,9 +55,23 @@ struct TCP_hdr {
   u_short th_urp;
 };
 
+struct Packet {
+  const struct pcap_pkthdr *header;
+  const u_char *packet;
+};
+
+struct Status {
+  u_int8_t syn;
+  u_int8_t fin;
+  u_int8_t rst;
+};
+
 
 
 const char *timestamp_string(struct timeval ts);
+
+int timeval_subtract(struct timeval *result, struct timeval x,
+                     struct timeval y);
 
 int timeval_subtract(struct timeval *result, struct timeval *x,
                      struct timeval *y);
@@ -67,7 +82,12 @@ struct ip *get_ip_header(const u_char *packet);
 
 struct TCP_hdr *get_tcp_header(const u_char *packet);
 
+const u_char *get_payload(const struct pcap_pkthdr *header, const u_char *packet);
 
+uint64_t get_payload_size(const struct pcap_pkthdr *header,
+                          const u_char *packet);
+
+std::string status_to_string(Status status);
 
 
 class Connection {
@@ -81,19 +101,6 @@ public:                       // begin public section
   //Connection &operator=(const Connection &copy_from); // copy assignment
 
   ~Connection(); // destructor
-
-/*
-  void set_source_address(struct in_addr new_address);
-  void set_destination_address(struct in_addr new_address);
-  void set_source_port(uint16_t new_port);
-  void set_destination_port(uint16_t new_port);
-  void set_end_time(struct timeval new_time);
-  void set_duration(struct timeval new_duration);
-  void set_number_packets_source_to_destination(uint32_t new_value);
-  void set_number_packets_destination_to_source(uint32_t new_value);
-  void set_number_bytes_source_to_destination(uint64_t new_value);
-  void set_number_bytes_destination_to_source(uint64_t new_value);
-*/
 
   struct in_addr get_source_address();
   struct in_addr get_destination_address();
@@ -109,46 +116,29 @@ public:                       // begin public section
   uint64_t get_number_bytes_source_to_destination();
   uint64_t get_number_bytes_destination_to_source();
 
-  void add_packet(struct ip *ip, struct TCP_hdr *tcp);
+  void add_packet(const u_char * packet, const struct pcap_pkthdr * header);
   uint32_t get_number_packets();
   uint64_t get_number_bytes();
+  uint64_t get_window();
+
   struct timeval get_duration();
 
-/*
-  struct ip * get_ip_header(size_t n) {
-    return (struct ip *)packets.at(n) + sizeof(struct ether_header);
-  }
-*/
+
+  Status get_status();
+
+  struct timeval get_rtt();
+
 
   std::vector<const u_char *> packets;
-  std::vector<struct ip *> ip_packet_headers;
-  std::vector<struct TCP_hdr *> tcp_packet_headers;
-
-
-  // NOTE: consider using pointer here
-  std::vector<struct timeval> timeval_of_packets;
   std::vector<const struct pcap_pkthdr *> pcap_packet_headers;
 
 protected:
-  struct in_addr sourceAddress;
-  struct in_addr destinationAddress;
-  uint16_t sourcePort;
-  uint16_t destinationPort;
-  struct timeval endTime;
-  struct timeval duration;
 
-  uint32_t numberPacketsSourceToDestination;
-  uint32_t numberPacketsDestinationToSource;
-
-  uint64_t numberBytesSourceToDestination;
-  uint64_t numberBytesDestinationToSource;
 
 private:
 
 
 };
-
-int is_same_connection(struct ip *ip, struct TCP_hdr *tcp, Connection *connection);
 
 /** A function that tests if two Connection objects have the same source and
  * destination addresses/ports.
@@ -167,6 +157,8 @@ std::string avg(std::vector<Connection> * vec, std::function<uint64_t(Connection
 std::string max(std::vector<Connection> * vec, std::function<uint64_t(Connection)> f);
 
 std::string min(std::vector<Connection> * vec, std::function<uint64_t(Connection)> f);
+
+struct timeval get_relative_time(std::vector<Connection> connections);
 
 #endif
 

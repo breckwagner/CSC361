@@ -20,7 +20,7 @@ Connection::Connection(const struct pcap_pkthdr *header, const u_char *packet) {
   try {
     this->pcap_packet_headers.emplace_back(header);
     this->packets.emplace_back(packet);
-  } catch (std::exception& e) {
+  } catch (std::exception &e) {
     std::cerr << "Exception catched : " << e.what() << std::endl;
   }
 }
@@ -34,97 +34,86 @@ struct in_addr Connection::get_destination_address() {
   return get_ip_header(packets.front())->ip_dst;
 }
 uint16_t Connection::get_source_port() {
-  return get_tcp_header(packets.front())->th_sport;
+  return ntohs(get_tcp_header(packets.front())->th_sport);
 }
 
 uint16_t Connection::get_destination_port() {
-  return get_tcp_header(packets.front())->th_dport;
+  return ntohs(get_tcp_header(packets.front())->th_dport);
 }
 
 struct timeval Connection::get_end_time() {
-  /*
-  struct timeval * result;
-  struct timeval * max = &(pcap_packet_headers.front()->ts);
-  for (struct pcap_pkthdr * i : pcap_packet_headers) {
-    if(timeval_subtract(result, max, &(i->ts))==1) max = &(i->ts);
-  }
-  return *max;
-  */
-  return timeval_of_packets.back();
+  return pcap_packet_headers.back()->ts;
 }
 
-bool Connection::get_duration(struct timeval * result) {
-  //timestamp_string((struct timeval) {i.timeval_of_packets.back().tv_sec-i.timeval_of_packets.front().tv_sec, i.timeval_of_packets.back().tv_usec-i.timeval_of_packets.front().tv_usec})
-  //struct timeval * min = &(pcap_packet_headers.front()->ts);
-  //struct timeval * max = &(pcap_packet_headers.front()->ts);
-  //struct timeval min = timeval_of_packets.front();
-  //struct timeval max;
-  //timeval_subtract(result, &max, &min);
-  /*for (struct pcap_pkthdr * i : pcap_packet_headers) {
-    if(timeval_subtract(result, &(i->ts), min)==1) min = &(i->ts);
-    if(timeval_subtract(result, max, &(i->ts))==1) max = &(i->ts);
-  }*/
-  //return (bool) timeval_subtract(result, max, min);
-  return true;
+bool Connection::get_duration(struct timeval *result) {
+  return (bool)timeval_subtract(result, pcap_packet_headers.back()->ts,
+                                pcap_packet_headers.front()->ts);
 }
 
 struct timeval Connection::get_duration() {
-  time_t tv_sec_a = timeval_of_packets.front().tv_sec;
-  long int tv_usec_a = timeval_of_packets.front().tv_usec;
-  time_t tv_sec_b = timeval_of_packets.back().tv_sec;
-  long int tv_usec_b = timeval_of_packets.back().tv_usec;
+  struct timeval result;
+  timeval_subtract(&result, pcap_packet_headers.back()->ts,
+                   pcap_packet_headers.front()->ts);
+  return result;
+}
 
-  time_t diff_tv_sec = tv_sec_a - tv_sec_b;
-  long int diff_tv_usec = tv_usec_a - tv_usec_b;
+struct timeval Connection::get_rtt() {
+  struct timeval result;
+  std::vector<struct Packet *> single;
 
-  if(diff_tv_sec < 0) {
-    diff_tv_sec = - diff_tv_sec;
+  // TODO
+  // uint32_t th_seq;
+  // uint32_t th_ack;
+  for (size_t n = 0; n < packets.size(); n++) {
+
+    std::cout << get_tcp_header(packets.at(n))->th_seq;
+    // auto x = (struct Packet *){pcap_packet_headers.at(n), packets.at(n)};
+    // single.push_back(x);
   }
-  if(diff_tv_usec < 0) {
-    diff_tv_usec = 1000000-diff_tv_usec;
-  }
-
-  return (struct timeval) {
-    tv_sec_a - tv_sec_b,
-    //(int)(1000000-tv_usec_a-tv_usec_a)
-    1
-    //(int)(tv_usec_a-tv_usec_a>=0)?(tv_usec_a-tv_usec_a):(1000000-tv_usec_a-tv_usec_a)
-  };
-  /*
-  return (struct timeval) {
-    abs(timeval_of_packets.back().tv_sec-timeval_of_packets.front().tv_sec),
-    abs(timeval_of_packets.back().tv_usec-timeval_of_packets.front().tv_usec)
-  };*/
+  // timeval_subtract(&result, pcap_packet_headers.back()->ts,
+  //                 pcap_packet_headers.front()->ts);
+  return result;
 }
 
 uint32_t Connection::get_number_packets_source_to_destination() {
-  return this->numberPacketsSourceToDestination;
+  size_t n = 0;
+  for (size_t i = 0; i < packets.size(); i++) {
+    if (get_source_address().s_addr == get_ip_header(packets.at(i))->ip_src.s_addr)
+      n++;
+  }
+  return n;
 }
 uint32_t Connection::get_number_packets_destination_to_source() {
-  return this->numberPacketsDestinationToSource;
+  size_t n = 0;
+  for (size_t i = 0; i < packets.size(); i++) {
+    if (get_source_address().s_addr !=
+        get_ip_header(packets.at(i))->ip_src.s_addr) {
+      n++;
+    }
+  }
+  return n;
 }
 uint64_t Connection::get_number_bytes_source_to_destination() {
-  uint64_t result = 0;
-  for(size_t i = 0; i < packets.size(); i++) {
-    if (this->sourceAddress.s_addr == this->ip_packet_headers.at(i)->ip_src.s_addr)
-      result += pcap_packet_headers.at(i)->caplen;
+  uint64_t n = 0;
+  for (size_t i = 0; i < packets.size(); i++) {
+    if (get_source_address().s_addr == get_ip_header(packets.at(i))->ip_src.s_addr)
+      n += pcap_packet_headers.at(i)->caplen;
   }
-  return result;
-  //return this->numberBytesSourceToDestination;
+  return n;
 }
 uint64_t Connection::get_number_bytes_destination_to_source() {
-  uint64_t result = 0;
-  for(size_t i = 0; i < packets.size(); i++) {
-    if (this->sourceAddress.s_addr != this->ip_packet_headers.at(i)->ip_src.s_addr)
-      result += pcap_packet_headers.at(i)->caplen;
+  uint64_t n = 0;
+  for (size_t i = 0; i < packets.size(); i++) {
+    if (get_source_address().s_addr != get_ip_header(packets.at(i))->ip_src.s_addr)
+      n += pcap_packet_headers.at(i)->caplen;
   }
-  return result;
-  //return this->numberBytesDestinationToSource;
+  return n;
 }
 
-void Connection::add_packet(struct ip *ip, struct TCP_hdr *tcp) {
-  this->ip_packet_headers.emplace_back(ip);
-  this->tcp_packet_headers.emplace_back(tcp);
+void Connection::add_packet(const u_char *packet,
+                            const struct pcap_pkthdr *header) {
+  this->pcap_packet_headers.emplace_back(header);
+  this->packets.emplace_back(packet);
 }
 
 uint32_t Connection::get_number_packets() {
@@ -135,6 +124,33 @@ uint32_t Connection::get_number_packets() {
 uint64_t Connection::get_number_bytes() {
   return get_number_bytes_source_to_destination() +
          get_number_bytes_destination_to_source();
+}
+
+// TODO
+uint64_t Connection::get_window() {
+  uint64_t n = 0, j = 0;
+  for (size_t i = 0; i < packets.size(); i++) {
+    if (get_source_address().s_addr != get_ip_header(packets.at(i))->ip_src.s_addr) {
+      n += get_tcp_header(packets.at(i))->th_win;
+      j++;
+    }
+  }
+  return n/j;
+}
+
+std::string status_to_string(Status status) {
+  if (status.rst > 0) return "R";
+  else return "s" + std::to_string(status.syn) + "f" + std::to_string(status.fin);
+}
+
+Status Connection::get_status() {
+  Status status = (Status){0,0,0};
+  for (const u_char *p : packets) {
+    if (get_tcp_header(p)->th_flags & TH_FIN) ++(status.fin);
+    if (get_tcp_header(p)->th_flags & TH_SYN) ++(status.syn);
+    if (get_tcp_header(p)->th_flags & TH_RST) ++status.rst;
+  }
+  return status;
 }
 
 /* Note, this routine returns a pointer into a static buffer, and
@@ -154,25 +170,25 @@ const char *timestamp_string(struct timeval ts) {
 
 int timeval_subtract(struct timeval *result, struct timeval *x,
                      struct timeval *y) {
-  /* Perform the carry for the later subtraction by updating y. */
-  if (x->tv_usec < y->tv_usec) {
-    int nsec = (y->tv_usec - x->tv_usec) / 1000000 + 1;
-    y->tv_usec -= 1000000 * nsec;
-    y->tv_sec += nsec;
+  *result = (struct timeval){x->tv_sec - y->tv_sec, x->tv_usec - y->tv_usec};
+  if (result->tv_usec < 0) {
+    --(result->tv_sec);
+    (result->tv_usec) += 1000000;
+    return 1;
+  } else {
+    return 0;
   }
-  if (x->tv_usec - y->tv_usec > 1000000) {
-    int nsec = (x->tv_usec - y->tv_usec) / 1000000;
-    y->tv_usec += 1000000 * nsec;
-    y->tv_sec -= nsec;
+}
+int timeval_subtract(struct timeval *result, struct timeval x,
+                     struct timeval y) {
+  *result = (struct timeval){x.tv_sec - y.tv_sec, x.tv_usec - y.tv_usec};
+  if (result->tv_usec < 0) {
+    --(result->tv_sec);
+    (result->tv_usec) += 1000000;
+    return 1;
+  } else {
+    return 0;
   }
-
-  /* Compute the time remaining to wait.
-     tv_usec is certainly positive. */
-  result->tv_sec = x->tv_sec - y->tv_sec;
-  result->tv_usec = x->tv_usec - y->tv_usec;
-
-  /* Return 1 if result is negative. */
-  return x->tv_sec < y->tv_sec;
 }
 
 int _is_same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
@@ -186,15 +202,6 @@ int _is_same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
          (recursion && _is_same_connection(ip_a_src, port_a_src, ip_a_dst,
                                            port_a_dst, ip_b_dst, port_b_dst,
                                            ip_b_src, port_b_src, false));
-}
-
-int is_same_connection(struct ip *ip, struct TCP_hdr *tcp,
-                       Connection *connection) {
-  return _is_same_connection(
-      ip->ip_src, ntohs(tcp->th_sport), ip->ip_dst, ntohs(tcp->th_dport),
-      connection->get_source_address(), connection->get_source_port(),
-      connection->get_destination_address(), connection->get_destination_port(),
-      false);
 }
 
 bool is_same_connection(Connection *a, Connection *b, bool mirror) {
@@ -252,7 +259,6 @@ std::string min(std::vector<Connection> *vec,
   return std::to_string(value);
 }
 
-
 /**
  * @param {const u_char *} packet
  * @return {struct ether_header *}
@@ -276,6 +282,27 @@ struct ip *get_ip_header(const u_char *packet) {
  */
 struct TCP_hdr *get_tcp_header(const u_char *packet) {
   const u_char *pointer =
-      packet + sizeof(struct ether_header) + sizeof(get_ip_header(packet)->ip_hl * 4);
+      packet + sizeof(struct ether_header) + (get_ip_header(packet)->ip_hl * 4);
   return (struct TCP_hdr *)pointer;
+}
+
+const u_char * get_payload(const struct pcap_pkthdr *header, const u_char *packet) {
+  const u_char *pointer = packet + sizeof(struct ether_header) +
+                          (get_ip_header(packet)->ip_hl * 4) +
+                          get_tcp_header(packet)->th_off * 4;
+  return pointer;
+}
+
+uint64_t get_payload_size(const struct pcap_pkthdr *header,
+                          const u_char *packet) {
+  uint64_t offset = sizeof(struct ether_header) +
+                    get_ip_header(packet)->ip_hl * 4 +
+                    get_tcp_header(packet)->th_off * 4;
+
+  return header->caplen - offset;
+}
+
+struct timeval get_relative_time(std::vector<Connection> connections) {
+  struct timeval offset = connections.front().pcap_packet_headers.front()->ts;
+  return offset;
 }
