@@ -73,12 +73,16 @@ int main(int argc, char **argv) {
  */
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet) {
+  Connection tmp_1 = Connection(header, packet);
+  bool isNewConnection = true;
+/*
+  const u_char *packet_copy = packet;
   static uint64_t count = 0;
   uint32_t capture_length = header->caplen;
   uint32_t ip_header_length;
   struct ip *ip;
   struct TCP_hdr *tcp;
-  bool isNewConnection = true;
+
   struct timeval tmp_time;
   struct timeval tmp_time_2 = header->ts;
 
@@ -101,7 +105,8 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
   }
 
   ip = (struct ip *)packet;
-  ip_header_length = ip->ip_hl * 4; /* ip_hl is in 4-byte words */
+  //ip = get_ip_header(packet_copy);
+  ip_header_length = ip->ip_hl * 4; // ip_hl is in 4-byte words
 
   if (capture_length < ip_header_length) {
     return;
@@ -112,17 +117,24 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
   capture_length -= ip_header_length;
 
   tcp = (struct TCP_hdr *)packet;
+  //cout << ntohs(get_tcp_header(packet_copy)->th_dport) << '\n';
+
 
   packet += tcp->th_off * 4;
   capture_length -= tcp->th_off * 4;
-  Connection tmp_1;
+  */
+
   for (Connection &tmp_2 : connections) {
     // TODO MEMORY LEAK
-    tmp_1 = Connection(ip, tcp);
     isNewConnection = (isNewConnection && !is_same_connection(&tmp_1, &tmp_2));
-
+    /*
     if (is_same_connection(&tmp_1, &tmp_2)) {
       tmp_2.timeval_of_packets.emplace_back(tmp_time);
+      tmp_2.ip_packet_headers.emplace_back(ip);
+      tmp_2.tcp_packet_headers.emplace_back(tcp);
+
+      tmp_2.pcap_packet_headers.emplace_back(header);
+      tmp_2.packets.emplace_back(packet_copy);
     }
 
     if (is_same_connection(&tmp_1, &tmp_2) &&
@@ -135,14 +147,11 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
 
       tmp_2.set_number_packets_destination_to_source(
           tmp_2.get_number_packets_destination_to_source() + 1);
-    }
+    }*/
   }
 
   if (isNewConnection) {
-    Connection new_connection = Connection(ip, tcp);
-    // NOTE: emblace should copy
-    new_connection.timeval_of_packets.emplace_back(tmp_time);
-    connections.emplace_back(new_connection);
+    connections.emplace_back(tmp_1);
   }
 }
 
@@ -152,24 +161,25 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
 void printOutput() {
   std::size_t n = 0;
 
-  cout << "\nA) Total number of connections: " +
-              std::to_string(connections.size());
+  cout << "\nA) Total number of connections: "
+       << std::to_string(connections.size());
 
-  cout << "\n----------------------------------------------------------------"
-          "----------------\n";
+  cout << "\n" << std::string(80, '-') << "\n";
 
   cout << "\nB) Connections' details:\n";
-
-  // for (std::vector<int>::iterator it = fifth.begin(); it != fifth.end();
-  // ++it)
 
   for (Connection i : connections) {
     cout << "\n\tConnection " << std::to_string(++n) << ":";
 
-    cout << "\n\t     Source Address: " << inet_ntoa(i.get_source_address());
+    cout << "\n\t     Source Address: "
+         << inet_ntoa(i.get_source_address());
+
     cout << "\n\tDestination Address: "
          << inet_ntoa(i.get_destination_address());
-    cout << "\n\t        Source Port: " << std::to_string(i.get_source_port());
+
+    cout << "\n\t        Source Port: "
+         << std::to_string(i.get_source_port());
+
     cout << "\n\t   Destination Port: "
          << std::to_string(i.get_destination_port());
 
@@ -197,17 +207,24 @@ void printOutput() {
 
     cout << "\n\t   # of packets sent from Source to Destination: "
          << std::to_string(i.get_number_packets_source_to_destination());
-         
+
     cout << "\n\t   # of packets sent from Destination to Source: "
          << std::to_string(i.get_number_packets_destination_to_source());
 
-    cout << "\n\t                        Total number of packets: " <<
-    std::to_string(i.get_number_packets_source_to_destination() +
-                   i.get_number_packets_destination_to_source());
+    cout << "\n\t                        Total number of packets: "
+         << std::to_string(i.get_number_packets_source_to_destination() +
+                           i.get_number_packets_destination_to_source());
 
-    cout << "\n\t# of data bytes sent from Source to Destination: ";
-    cout << "\n\t# of data bytes sent from Destination to Source: ";
-    cout << "\n\t                     Total number of data bytes: ";
+    cout << "\n\t# of data bytes sent from Source to Destination: "
+         << std::to_string(i.get_number_bytes_source_to_destination());
+
+    cout << "\n\t# of data bytes sent from Destination to Source: "
+         << std::to_string(i.get_number_bytes_destination_to_source());
+
+    cout << "\n\t                     Total number of data bytes: "
+         << std::to_string(i.get_number_bytes_source_to_destination() +
+                           i.get_number_bytes_destination_to_source());
+
     cout << "\n\tEND";
 
     if (n - connections.size() > 0)

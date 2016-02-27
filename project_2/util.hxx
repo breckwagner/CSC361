@@ -26,6 +26,7 @@
 //#include <cstring>
 #include <iostream>
 //#include <string>
+#include <functional>
 #include <vector>
 //#include <ctime>
 //#include <cstdint>
@@ -60,14 +61,20 @@ const char *timestamp_string(struct timeval ts);
 int timeval_subtract(struct timeval *result, struct timeval *x,
                      struct timeval *y);
 
+struct ether_header *get_ether_header(const u_char *packet);
+
+struct ip *get_ip_header(const u_char *packet);
+
+struct TCP_hdr *get_tcp_header(const u_char *packet);
+
+
+
 
 class Connection {
 public:                       // begin public section
   Connection(); // constructor
 
-  Connection(struct ip *ip, struct TCP_hdr *tcp);
-
-  Connection(struct ip *ip, struct TCP_hdr *tcp, struct pcap_pkthdr * pcap);
+  Connection(const struct pcap_pkthdr *header, const u_char *packet);
 
   //Connection(const Connection &copy_from); // copy constructor
 
@@ -75,7 +82,7 @@ public:                       // begin public section
 
   ~Connection(); // destructor
 
-
+/*
   void set_source_address(struct in_addr new_address);
   void set_destination_address(struct in_addr new_address);
   void set_source_port(uint16_t new_port);
@@ -86,6 +93,7 @@ public:                       // begin public section
   void set_number_packets_destination_to_source(uint32_t new_value);
   void set_number_bytes_source_to_destination(uint64_t new_value);
   void set_number_bytes_destination_to_source(uint64_t new_value);
+*/
 
   struct in_addr get_source_address();
   struct in_addr get_destination_address();
@@ -106,12 +114,20 @@ public:                       // begin public section
   uint64_t get_number_bytes();
   struct timeval get_duration();
 
+/*
+  struct ip * get_ip_header(size_t n) {
+    return (struct ip *)packets.at(n) + sizeof(struct ether_header);
+  }
+*/
+
+  std::vector<const u_char *> packets;
   std::vector<struct ip *> ip_packet_headers;
   std::vector<struct TCP_hdr *> tcp_packet_headers;
 
+
   // NOTE: consider using pointer here
   std::vector<struct timeval> timeval_of_packets;
-  std::vector<struct pcap_pkthdr *> pcap_packet_headers;
+  std::vector<const struct pcap_pkthdr *> pcap_packet_headers;
 
 protected:
   struct in_addr sourceAddress;

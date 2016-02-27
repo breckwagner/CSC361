@@ -15,67 +15,31 @@
 
 Connection::Connection() {}
 
-Connection::Connection(struct ip *ip, struct TCP_hdr *tcp) {
-  set_source_address(ip->ip_src);
-  set_destination_address(ip->ip_dst);
-  set_source_port(ntohs(tcp->th_sport));
-  set_destination_port(ntohs(tcp->th_dport));
-  ip_packet_headers.emplace_back(ip);
-  tcp_packet_headers.emplace_back(tcp);
-}
-
-Connection::Connection(struct ip *ip, struct TCP_hdr *tcp, struct pcap_pkthdr * pcap) {
-  set_source_address(ip->ip_src);
-  set_destination_address(ip->ip_dst);
-  set_source_port(ntohs(tcp->th_sport));
-  set_destination_port(ntohs(tcp->th_dport));
-  ip_packet_headers.emplace_back(ip);
-  tcp_packet_headers.emplace_back(tcp);
-  pcap_packet_headers.emplace_back(pcap);
+Connection::Connection(const struct pcap_pkthdr *header, const u_char *packet) {
+  // TODO TEST if it is a valid connection and fail gracefully
+  try {
+    this->pcap_packet_headers.emplace_back(header);
+    this->packets.emplace_back(packet);
+  } catch (std::exception& e) {
+    std::cerr << "Exception catched : " << e.what() << std::endl;
+  }
 }
 
 Connection::~Connection() {}
 
-void Connection::set_source_address(struct in_addr new_value) {
-  this->sourceAddress = new_value;
-}
-void Connection::set_destination_address(struct in_addr new_value) {
-  this->destinationAddress = new_value;
-}
-void Connection::set_source_port(uint16_t new_value) {
-  this->sourcePort = new_value;
-}
-void Connection::set_destination_port(uint16_t new_value) {
-  this->destinationPort = new_value;
-}
-void Connection::set_end_time(struct timeval new_value) {
-  this->endTime = new_value;
-}
-void Connection::set_duration(struct timeval new_value) {
-  this->duration = new_value;
-}
-void Connection::set_number_packets_source_to_destination(uint32_t new_value) {
-  this->numberPacketsSourceToDestination = new_value;
-}
-void Connection::set_number_packets_destination_to_source(uint32_t new_value) {
-  this->numberPacketsDestinationToSource = new_value;
-}
-void Connection::set_number_bytes_source_to_destination(uint64_t new_value) {
-  this->numberBytesSourceToDestination = new_value;
-}
-void Connection::set_number_bytes_destination_to_source(uint64_t new_value) {
-  this->numberBytesDestinationToSource = new_value;
-}
-
 struct in_addr Connection::get_source_address() {
-  return this->sourceAddress;
+  return get_ip_header(packets.front())->ip_src;
 }
 struct in_addr Connection::get_destination_address() {
-  return this->destinationAddress;
+  return get_ip_header(packets.front())->ip_dst;
 }
-uint16_t Connection::get_source_port() { return this->sourcePort; }
+uint16_t Connection::get_source_port() {
+  return get_tcp_header(packets.front())->th_sport;
+}
 
-uint16_t Connection::get_destination_port() { return this->destinationPort; }
+uint16_t Connection::get_destination_port() {
+  return get_tcp_header(packets.front())->th_dport;
+}
 
 struct timeval Connection::get_end_time() {
   /*
@@ -106,14 +70,25 @@ bool Connection::get_duration(struct timeval * result) {
 
 struct timeval Connection::get_duration() {
   time_t tv_sec_a = timeval_of_packets.front().tv_sec;
-  uint32_t tv_usec_a = timeval_of_packets.front().tv_usec;
+  long int tv_usec_a = timeval_of_packets.front().tv_usec;
   time_t tv_sec_b = timeval_of_packets.back().tv_sec;
-  uint32_t tv_usec_b = timeval_of_packets.back().tv_usec;
+  long int tv_usec_b = timeval_of_packets.back().tv_usec;
+
+  time_t diff_tv_sec = tv_sec_a - tv_sec_b;
+  long int diff_tv_usec = tv_usec_a - tv_usec_b;
+
+  if(diff_tv_sec < 0) {
+    diff_tv_sec = - diff_tv_sec;
+  }
+  if(diff_tv_usec < 0) {
+    diff_tv_usec = 1000000-diff_tv_usec;
+  }
 
   return (struct timeval) {
     tv_sec_a - tv_sec_b,
     //(int)(1000000-tv_usec_a-tv_usec_a)
-    (int)(tv_usec_a-tv_usec_a>=0)?(tv_usec_a-tv_usec_a):(1000000-tv_usec_a-tv_usec_a)
+    1
+    //(int)(tv_usec_a-tv_usec_a>=0)?(tv_usec_a-tv_usec_a):(1000000-tv_usec_a-tv_usec_a)
   };
   /*
   return (struct timeval) {
@@ -129,10 +104,22 @@ uint32_t Connection::get_number_packets_destination_to_source() {
   return this->numberPacketsDestinationToSource;
 }
 uint64_t Connection::get_number_bytes_source_to_destination() {
-  return this->numberBytesSourceToDestination;
+  uint64_t result = 0;
+  for(size_t i = 0; i < packets.size(); i++) {
+    if (this->sourceAddress.s_addr == this->ip_packet_headers.at(i)->ip_src.s_addr)
+      result += pcap_packet_headers.at(i)->caplen;
+  }
+  return result;
+  //return this->numberBytesSourceToDestination;
 }
 uint64_t Connection::get_number_bytes_destination_to_source() {
-  return this->numberBytesDestinationToSource;
+  uint64_t result = 0;
+  for(size_t i = 0; i < packets.size(); i++) {
+    if (this->sourceAddress.s_addr != this->ip_packet_headers.at(i)->ip_src.s_addr)
+      result += pcap_packet_headers.at(i)->caplen;
+  }
+  return result;
+  //return this->numberBytesDestinationToSource;
 }
 
 void Connection::add_packet(struct ip *ip, struct TCP_hdr *tcp) {
@@ -263,4 +250,32 @@ std::string min(std::vector<Connection> *vec,
     if (value > f(i))
       value = f(i);
   return std::to_string(value);
+}
+
+
+/**
+ * @param {const u_char *} packet
+ * @return {struct ether_header *}
+ */
+struct ether_header *get_ether_header(const u_char *packet) {
+  return (struct ether_header *)packet;
+}
+
+/**
+ * @param {const u_char *} packet
+ * @return {struct ip *}
+ */
+struct ip *get_ip_header(const u_char *packet) {
+  const u_char *pointer = packet + sizeof(struct ether_header);
+  return (struct ip *)pointer;
+}
+
+/**
+ * @param {const u_char *} packet
+ * @return {struct TCP_hdr *}
+ */
+struct TCP_hdr *get_tcp_header(const u_char *packet) {
+  const u_char *pointer =
+      packet + sizeof(struct ether_header) + sizeof(get_ip_header(packet)->ip_hl * 4);
+  return (struct TCP_hdr *)pointer;
 }
