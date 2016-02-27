@@ -93,6 +93,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
       tmp_2.add_packet(packet_copy, header_copy);
     }
   }
+
   if (flag)
     connections.emplace_back(tmp_1);
 }
@@ -103,9 +104,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
 void printOutput() {
   std::size_t n = 0;
   struct timeval *result;
-  uint64_t value;
   struct timeval offset = get_relative_time(connections);
-  std::vector<Status> status_vec;
 
   std::cout << "\nA) Total number of connections: "
             << std::to_string(connections.size()) << std::endl;
@@ -115,8 +114,6 @@ void printOutput() {
   std::cout << std::endl << "B) Connections' details:\n" << std::endl;
 
   for (Connection i : connections) {
-    Status status = i.get_status();
-    status_vec.emplace_back(status);
 
     std::cout << std::endl
               << "Connection " << std::to_string(++n) << ":" << std::endl;
@@ -133,18 +130,19 @@ void printOutput() {
     std::cout << "   Destination Port: "
               << std::to_string(i.get_destination_port()) << std::endl;
 
-    std::cout << "             Status: " << status_to_string(status)
+    std::cout << "             Status: " << status_to_string(i.get_status())
               << std::endl;
 
     // If the connection is complete
-    if (status.syn != 0 && status.fin != 0 && status.rst == 0) {
-      timeval_subtract(result, i.get_end_time(), offset);
-      std::cout << std::string(39, ' ') << "End Time: "
-                << timestamp_string(*result)
+    if (i.get_status().syn != 0 && i.get_status().fin != 0 &&
+        i.get_status().rst == 0) {
+
+      std::cout << std::string(39, ' ')
+                << "End Time: " << timeval_subtract(i.get_end_time(), offset)
                 << std::endl;
 
-      std::cout << std::string(39, ' ') << "Duration: "
-                << timestamp_string(i.get_duration())
+      std::cout << std::string(39, ' ')
+                << "Duration: " << timestamp_string(i.get_duration())
                 << std::endl;
 
       std::cout << "   # of packets sent from Source to Destination: "
@@ -182,32 +180,32 @@ void printOutput() {
   std::cout << std::endl << std::string(80, '-') << std::endl;
 
   std::cout << std::endl << "C) General" << std::endl;
+
   std::cout << "Total number of complete TCP connections: "
-            << std::to_string([status_vec]() {
+            << std::to_string([]() {
                  uint64_t n = 0;
-                 for (Status i : status_vec)
-                   if (i.syn != 0 && i.fin != 0 && i.rst == 0)
+                 for (Connection i : connections)
+                   if (i.get_status().syn != 0 && i.get_status().fin != 0 &&
+                       i.get_status().rst == 0)
                      n++;
                  return n;
                }())
             << std::endl;
 
-  std::cout << "Number of reset TCP connections: "
-            << std::to_string([status_vec]() {
-                 uint64_t n = 0;
-                 for (Status i : status_vec)
-                   if (i.rst != 0)
-                     n++;
-                 return n;
-               }())
-            << std::endl;
+  std::cout << "Number of reset TCP connections: " << std::to_string([]() {
+    uint64_t n = 0;
+    for (Connection i : connections)
+      if (i.get_status().rst != 0)
+        n++;
+    return n;
+  }()) << std::endl;
 
   std::cout << "Number of TCP connections that were still open when the trace "
                "capture ended: "
-            << std::to_string([status_vec]() {
+            << std::to_string([]() {
                  uint64_t n = 0;
-                 for (Status i : status_vec)
-                   if (i.fin==0 && i.rst==0)
+                 for (Connection i : connections)
+                   if (i.get_status().fin == 0 && i.get_status().rst == 0)
                      n++;
                  return n;
                }())
@@ -217,29 +215,48 @@ void printOutput() {
 
   std::cout << std::endl << "D) Complete TCP connections:" << std::endl;
 
-  std::cout << "Minimum time durations: "
-            << min(&connections, [](Connection c) {
-                 struct timeval *result;
-                 // return c.get_duration(result);
-                 return 0;
-               }) << std::endl;
+  std::cout << "Minimum time durations: " << []() {
+    struct timeval min = connections.front().get_duration();
+    for (Connection i : connections)
+      if (timercmp(i.get_duration(), min, < ))
+        min = i.get_duration();
+    return timestamp_string(min);
+  }() << std::endl;
 
-  std::cout << "Mean time durations:    "
-            << min(&connections, [](Connection c) {
-                 struct timeval *result;
-                 // return c.get_duration(result);
-                 return 0;
-               }) << std::endl;
+  std::cout << "Mean time durations:    " << []() {
+    uint64_t tv_sec = 0;
+    uint64_t tv_usec = 0;
+    for (Connection i : connections) {
+      tv_sec += i.get_duration().tv_sec;
+      tv_usec += i.get_duration().tv_sec;
+    }
+    return timestamp_string(
+        (struct timeval){(time_t)(tv_sec / connections.size()),
+                         (uint16_t)(tv_usec / connections.size())});
+  }() << std::endl;
 
-  std::cout << "Maximum time durations: "
-            << max(&connections, [](Connection c) {
-                 struct timeval *result;
-                 // return c.get_duration(result);
-                 return 0;
-               }) << std::endl;
+  std::cout << "Maximum time durations: " << []() {
+    struct timeval max = connections.front().get_duration();
+    for (Connection i : connections)
+      if (timercmp(i.get_duration(), max, > ))
+        max = i.get_duration();
+    return timestamp_string(max);
+  }() << std::endl;
 
   std::cout << "Minimum RTT values including both send/received: "
-            << min(&connections, [](Connection c) { return 0; }) << std::endl;
+            << ([]() {
+                 uint64_t value =
+                     get_tcp_header(connections.front().packets.front())
+                         ->th_win;
+                 for (Connection i : connections)
+                   for (const u_char *j : i.packets) {
+                     uint64_t tmp = get_tcp_header(j)->th_win;
+                     if (tmp < value)
+                       value = tmp;
+                   }
+                 return value;
+               })()
+            << std::endl;
 
   std::cout << "Mean RTT values including both send/received:    "
             << avg(&connections, [](Connection c) { return 0; }) << std::endl;
@@ -262,14 +279,50 @@ void printOutput() {
                  return c.get_number_packets();
                }) << std::endl;
 
+  // NOTE: this section should be changed to not use the internal packets
+  // variable. Additionally, these lambda expressions should be made into macros
+  // or included in the Connection class
   std::cout << "Minimum receive window sizes including both send/received: "
-            << min(&connections, [](Connection c) { return 0; }) << std::endl;
+            << ([]() {
+                 uint64_t value =
+                     get_tcp_header(connections.front().packets.front())
+                         ->th_win;
+                 for (Connection i : connections)
+                   for (const u_char *j : i.packets) {
+                     uint64_t tmp = get_tcp_header(j)->th_win;
+                     if (tmp < value)
+                       value = tmp;
+                   }
+                 return value;
+               })()
+            << std::endl;
 
   std::cout << "Mean receive window sizes including both send/received:    "
-            << avg(&connections, [](Connection c) { return 0; }) << std::endl;
+            << ([]() {
+              double n = 0;
+              uint64_t value = get_tcp_header(connections.front().packets.front())->th_win;
+              for (Connection i : connections)
+                for (const u_char * j : i.packets) {
+                  value += get_tcp_header(j)->th_win;
+                  n++;
+                }
+              return value / n;
+            })() << std::endl;
 
   std::cout << "Maximum receive window sizes including both send/received: "
-            << max(&connections, [](Connection c) { return 0; }) << std::endl;
+            << ([]() {
+                 uint64_t value =
+                     get_tcp_header(connections.front().packets.front())
+                         ->th_win;
+                 for (Connection i : connections)
+                   for (const u_char *j : i.packets) {
+                     uint64_t tmp = get_tcp_header(j)->th_win;
+                     if (tmp > value)
+                       value = tmp;
+                   }
+                 return value;
+               })()
+            << std::endl;
 
   std::cout << std::endl << std::endl;
 }

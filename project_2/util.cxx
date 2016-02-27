@@ -143,8 +143,8 @@ std::string status_to_string(Status status) {
   else return "s" + std::to_string(status.syn) + "f" + std::to_string(status.fin);
 }
 
-Status Connection::get_status() {
-  Status status = (Status){0,0,0};
+struct Status Connection::get_status() {
+  struct Status status = (struct Status){0,0,0};
   for (const u_char *p : packets) {
     if (get_tcp_header(p)->th_flags & TH_FIN) ++(status.fin);
     if (get_tcp_header(p)->th_flags & TH_SYN) ++(status.syn);
@@ -191,6 +191,16 @@ int timeval_subtract(struct timeval *result, struct timeval x,
   }
 }
 
+std::string timeval_subtract(struct timeval x, struct timeval y) {
+  struct timeval result = (struct timeval){x.tv_sec - y.tv_sec, x.tv_usec - y.tv_usec};
+  if (result.tv_usec < 0) {
+    --(result.tv_sec);
+    (result.tv_usec) += 1000000;
+  }
+  return timestamp_string(result);
+}
+
+
 int _is_same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
                         struct in_addr ip_a_dst, uint16_t port_a_dst,
                         struct in_addr ip_b_src, uint16_t port_b_src,
@@ -221,12 +231,12 @@ bool is_same_connection(Connection *a, Connection *b) {
  * function f should be of the format:
  * [](Connection * c) {return c.%parameter%}
  */
-std::string avg(std::vector<Connection> *vec,
+uint64_t avg(std::vector<Connection> *vec,
                 std::function<uint64_t(Connection)> f) {
   uint64_t value = f(vec->front());
   for (Connection i : *vec)
     value += f(i);
-  return std::to_string(value / ((double)vec->size()));
+  return value / ((double)vec->size());
 }
 
 /**
@@ -235,13 +245,13 @@ std::string avg(std::vector<Connection> *vec,
  * function f should be of the format:
  * [](Connection * c) {return c.%parameter%}
  */
-std::string max(std::vector<Connection> *vec,
+uint64_t max(std::vector<Connection> *vec,
                 std::function<uint64_t(Connection)> f) {
   uint64_t value = f(vec->front());
   for (Connection i : *vec)
     if (value < f(i))
       value = f(i);
-  return std::to_string(value);
+  return value;
 }
 
 /**
@@ -250,13 +260,13 @@ std::string max(std::vector<Connection> *vec,
  * function f should be of the format:
  * [](Connection * c) {return c.%parameter%}
  */
-std::string min(std::vector<Connection> *vec,
+uint64_t min(std::vector<Connection> *vec,
                 std::function<uint64_t(Connection)> f) {
   uint64_t value = f(vec->front());
   for (Connection i : *vec)
     if (value > f(i))
       value = f(i);
-  return std::to_string(value);
+  return value;
 }
 
 /**

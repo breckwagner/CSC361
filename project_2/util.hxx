@@ -14,7 +14,7 @@
 #include <pcap.h>
 
 /******************************************************************************/
-#include <sys/time.h>
+//#include <sys/time.h>
 #include <stdlib.h>
 #include <assert.h>
 /******************************************************************************/
@@ -24,9 +24,10 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
-//#include <cstring>
+#include <cstring>
 #include <iostream>
 //#include <string>
+//#include <cstdio>
 #include <functional>
 #include <vector>
 //#include <ctime>
@@ -65,10 +66,13 @@ struct Status {
   u_int8_t fin;
   u_int8_t rst;
 };
-
-
+#define timercmp(a, b, CMP)                                                    \
+  (((a).tv_sec == (b).tv_sec) ? ((a).tv_usec CMP(b).tv_usec)                   \
+                              : ((a).tv_sec CMP(b).tv_sec))
 
 const char *timestamp_string(struct timeval ts);
+
+std::string timeval_subtract(struct timeval x, struct timeval y);
 
 int timeval_subtract(struct timeval *result, struct timeval x,
                      struct timeval y);
@@ -82,23 +86,23 @@ struct ip *get_ip_header(const u_char *packet);
 
 struct TCP_hdr *get_tcp_header(const u_char *packet);
 
-const u_char *get_payload(const struct pcap_pkthdr *header, const u_char *packet);
+const u_char *get_payload(const struct pcap_pkthdr *header,
+                          const u_char *packet);
 
 uint64_t get_payload_size(const struct pcap_pkthdr *header,
                           const u_char *packet);
 
 std::string status_to_string(Status status);
 
-
 class Connection {
-public:                       // begin public section
+public:         // begin public section
   Connection(); // constructor
 
   Connection(const struct pcap_pkthdr *header, const u_char *packet);
 
-  //Connection(const Connection &copy_from); // copy constructor
+  // Connection(const Connection &copy_from); // copy constructor
 
-  //Connection &operator=(const Connection &copy_from); // copy assignment
+  // Connection &operator=(const Connection &copy_from); // copy assignment
 
   ~Connection(); // destructor
 
@@ -109,35 +113,29 @@ public:                       // begin public section
 
   struct timeval get_end_time();
 
-  bool get_duration(struct timeval * result);
+  bool get_duration(struct timeval *result);
 
   uint32_t get_number_packets_source_to_destination();
   uint32_t get_number_packets_destination_to_source();
   uint64_t get_number_bytes_source_to_destination();
   uint64_t get_number_bytes_destination_to_source();
 
-  void add_packet(const u_char * packet, const struct pcap_pkthdr * header);
+  void add_packet(const u_char *packet, const struct pcap_pkthdr *header);
   uint32_t get_number_packets();
   uint64_t get_number_bytes();
   uint64_t get_window();
 
   struct timeval get_duration();
 
-
-  Status get_status();
+  struct Status get_status();
 
   struct timeval get_rtt();
-
 
   std::vector<const u_char *> packets;
   std::vector<const struct pcap_pkthdr *> pcap_packet_headers;
 
 protected:
-
-
 private:
-
-
 };
 
 /** A function that tests if two Connection objects have the same source and
@@ -148,26 +146,26 @@ private:
  * @param {bool} mirror the flag that specifies whether to return true if the
  * source and destination addresses/ports can be reversed
  */
-bool is_same_connection(Connection * a, Connection * b, bool mirror);
+bool is_same_connection(Connection *a, Connection *b, bool mirror);
 
-bool is_same_connection(Connection * a, Connection * b);
+bool is_same_connection(Connection *a, Connection *b);
 
-std::string avg(std::vector<Connection> * vec, std::function<uint64_t(Connection)> f);
+uint64_t avg(std::vector<Connection> *vec,
+                std::function<uint64_t(Connection)> f);
 
-std::string max(std::vector<Connection> * vec, std::function<uint64_t(Connection)> f);
+uint64_t max(std::vector<Connection> *vec,
+                std::function<uint64_t(Connection)> f);
 
-std::string min(std::vector<Connection> * vec, std::function<uint64_t(Connection)> f);
+uint64_t min(std::vector<Connection> *vec,
+                std::function<uint64_t(Connection)> f);
 
 struct timeval get_relative_time(std::vector<Connection> connections);
 
 #endif
 
-
-//struct timeval ts; /// time stamp /
-//bpf_u_int32 header.caplen; /// length of portion present /
-//bpf_u_int32 header.len; /// length this packet (off wire) /
-
-
+// struct timeval ts; /// time stamp /
+// bpf_u_int32 header.caplen; /// length of portion present /
+// bpf_u_int32 header.len; /// length this packet (off wire) /
 
 /*
 
