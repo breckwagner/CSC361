@@ -25,12 +25,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
  *
  */
 int main(int argc, char **argv) {
-  unsigned int packet_counter = 0;
-  struct pcap_pkthdr header;
-  const u_char *packet;
-  struct bpf_program fp; /* hold compiled program     */
-  bpf_u_int32 maskp;     /* subnet mask               */
-  bpf_u_int32 netp;      /* ip                        */
+  struct bpf_program fp;
 
   if (argc < 2) {
     std::cerr << "Usage: " << argv[0] << "<pcap>\n";
@@ -47,7 +42,7 @@ int main(int argc, char **argv) {
   }
 
   /* Lets try and compile the program.. non-optimized */
-  if (pcap_compile(descr, &fp, "tcp", 0, netp) == -1) {
+  if (pcap_compile(descr, &fp, "tcp", 0, PCAP_NETMASK_UNKNOWN) == -1) {
     std::cerr << "Error calling pcap_compile\n";
     return EXIT_FAILURE;
   }
@@ -58,7 +53,10 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic push
   pcap_loop(descr, -1, got_packet, NULL);
+#pragma GCC diagnostic pop
 
   printOutput();
 
@@ -76,26 +74,32 @@ int main(int argc, char **argv) {
  */
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet) {
+  try {
+    if (!is_header_intact(header, packet))
+      return;
+    struct pcap_pkthdr *header_copy =
+        (struct pcap_pkthdr *)malloc(sizeof(struct pcap_pkthdr));
+    u_char *packet_copy = (u_char *)malloc(header->caplen);
 
-  struct pcap_pkthdr *header_copy =
-      (struct pcap_pkthdr *)malloc(sizeof(struct pcap_pkthdr));
-  u_char *packet_copy = (u_char *)malloc(header->caplen);
+    memmove(header_copy, header, sizeof(struct pcap_pkthdr));
+    memmove(packet_copy, packet, header->caplen);
 
-  memmove(header_copy, header, sizeof(struct pcap_pkthdr));
-  memmove(packet_copy, packet, header->caplen);
+    Connection tmp_1 = Connection(header_copy, packet_copy);
+    bool flag = true;
 
-  Connection tmp_1 = Connection(header_copy, packet_copy);
-  bool flag = true;
-
-  for (Connection &tmp_2 : connections) {
-    flag = (flag && !is_same_connection(&tmp_1, &tmp_2));
-    if (is_same_connection(&tmp_1, &tmp_2)) {
-      tmp_2.add_packet(packet_copy, header_copy);
+    for (Connection &tmp_2 : connections) {
+      flag = (flag && !is_same_connection(&tmp_1, &tmp_2));
+      if (is_same_connection(&tmp_1, &tmp_2)) {
+        tmp_2.add_packet(packet_copy, header_copy);
+      }
     }
-  }
 
-  if (flag)
-    connections.emplace_back(tmp_1);
+    if (flag)
+      connections.emplace_back(tmp_1);
+
+  } catch (std::exception &e) {
+    std::cerr << "Exception catched : " << e.what() << std::endl;
+  }
 }
 
 /**
@@ -103,7 +107,6 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
  */
 void printOutput() {
   std::size_t n = 0;
-  struct timeval *result;
   struct timeval offset = get_relative_time(connections);
 
   std::cout << "\nA) Total number of connections: "
@@ -218,7 +221,7 @@ void printOutput() {
   std::cout << "Minimum time durations: " << []() {
     struct timeval min = connections.front().get_duration();
     for (Connection i : connections)
-      if (timercmp(i.get_duration(), min, < ))
+      if (_timercmp(i.get_duration(), min, < ))
         min = i.get_duration();
     return timestamp_string(min);
   }() << std::endl;
@@ -238,36 +241,48 @@ void printOutput() {
   std::cout << "Maximum time durations: " << []() {
     struct timeval max = connections.front().get_duration();
     for (Connection i : connections)
-      if (timercmp(i.get_duration(), max, > ))
+      if (_timercmp(i.get_duration(), max, > ))
         max = i.get_duration();
     return timestamp_string(max);
   }() << std::endl;
 
   std::cout << "Minimum RTT values including both send/received: "
-            << ([]() {
-                 uint64_t value =
-                     get_tcp_header(connections.front().packets.front())
-                         ->th_win;
-                 for (Connection i : connections)
-                   for (const u_char *j : i.packets) {
-                     uint64_t tmp = get_tcp_header(j)->th_win;
-                     if (tmp < value)
-                       value = tmp;
-                   }
-                 return value;
-               })()
+  /*          << ([]() {
+              uint64_t value =
+                  get_tcp_header(connections.front().packets.front())->th_win;
+              for (Connection i : connections)
+                for (const u_char *j : i.packets) {
+                  uint64_t tmp = get_tcp_header(j)->th_win;
+                  if (tmp < value)
+                    value = tmp;
+                }
+              return value;
+            })()*/
             << std::endl;
 
   std::cout << "Mean RTT values including both send/received:    "
-            << avg(&connections, [](Connection c) { return 0; }) << std::endl;
+            //<< avg(&connections, [](Connection c) { return 0; })
+            << std::endl;
 
   std::cout << "Maximum RTT values including both send/received: "
-            << max(&connections, [](Connection c) { return 0; }) << std::endl;
+  /*
+  std::max_element(connections.begin(), connections.end(),
+                   ([](const Connection &i, const Connection &j) {
+                     return i.get_number_packets() < j.get_number_packets();
+
+                   }))
+      ->get_number_packets();
+      */
+            << std::endl;
 
   std::cout << "Minimum number of packets including both send/received: "
-            << min(&connections, [](Connection c) {
-                 return c.get_number_packets();
-               }) << std::endl;
+            << std::min_element(connections.begin(), connections.end(),
+                                ([](const Connection &i, const Connection &j) {
+                                  return i.get_number_packets() <
+                                         j.get_number_packets();
+                                }))
+                   ->get_number_packets()
+            << std::endl;
 
   std::cout << "Mean number of packets including both send/received:    "
             << avg(&connections, [](Connection c) {
@@ -275,9 +290,13 @@ void printOutput() {
                }) << std::endl;
 
   std::cout << "Maximum number of packets including both send/received: "
-            << max(&connections, [](Connection c) {
-                 return c.get_number_packets();
-               }) << std::endl;
+            << std::max_element(connections.begin(), connections.end(),
+                                ([](const Connection &i, const Connection &j) {
+                                  return i.get_number_packets() <
+                                         j.get_number_packets();
+                                }))
+                   ->get_number_packets()
+            << std::endl;
 
   // NOTE: this section should be changed to not use the internal packets
   // variable. Additionally, these lambda expressions should be made into macros
@@ -299,15 +318,18 @@ void printOutput() {
 
   std::cout << "Mean receive window sizes including both send/received:    "
             << ([]() {
-              double n = 0;
-              uint64_t value = get_tcp_header(connections.front().packets.front())->th_win;
-              for (Connection i : connections)
-                for (const u_char * j : i.packets) {
-                  value += get_tcp_header(j)->th_win;
-                  n++;
-                }
-              return value / n;
-            })() << std::endl;
+                 double n = 0;
+                 uint64_t value =
+                     get_tcp_header(connections.front().packets.front())
+                         ->th_win;
+                 for (Connection i : connections)
+                   for (const u_char *j : i.packets) {
+                     value += get_tcp_header(j)->th_win;
+                     n++;
+                   }
+                 return value / n;
+               })()
+            << std::endl;
 
   std::cout << "Maximum receive window sizes including both send/received: "
             << ([]() {

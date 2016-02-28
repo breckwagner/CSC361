@@ -1,4 +1,15 @@
-
+/*******************************************************************************
+ * @file util.hxx
+ * @author Richard B. Wagner
+ * @date 2016-02-27
+ * @brief "Limited" TCP trace file parser
+ *
+ * "The purpose of this project is to learn about the Transmission Control
+ * Protocol (TCP). You are required to write a C program with the pcap library
+ * to analyze the TCP protocol behavior."
+ *
+ * @see CSc 361: Computer Communications and Networks (Spring 2016) Assignment 2
+ ******************************************************************************/
 
 #ifndef _UTIL_HXX
 #define _UTIL_HXX
@@ -66,13 +77,15 @@ struct Status {
   u_int8_t fin;
   u_int8_t rst;
 };
-#define timercmp(a, b, CMP)                                                    \
+#define _timercmp(a, b, CMP)                                                    \
   (((a).tv_sec == (b).tv_sec) ? ((a).tv_usec CMP(b).tv_usec)                   \
                               : ((a).tv_sec CMP(b).tv_sec))
 
 const char *timestamp_string(struct timeval ts);
 
 std::string timeval_subtract(struct timeval x, struct timeval y);
+
+bool is_header_intact(const struct pcap_pkthdr *header, const u_char *packet);
 
 int timeval_subtract(struct timeval *result, struct timeval x,
                      struct timeval y);
@@ -106,30 +119,31 @@ public:         // begin public section
 
   ~Connection(); // destructor
 
-  struct in_addr get_source_address();
-  struct in_addr get_destination_address();
-  uint16_t get_source_port();
-  uint16_t get_destination_port();
+  struct in_addr get_source_address() const;
+  struct in_addr get_destination_address() const;
+  uint16_t get_source_port() const;
+  uint16_t get_destination_port() const;
 
-  struct timeval get_end_time();
+  struct timeval get_end_time() const;
 
-  bool get_duration(struct timeval *result);
+  bool get_duration(struct timeval *result) const;
 
-  uint32_t get_number_packets_source_to_destination();
-  uint32_t get_number_packets_destination_to_source();
-  uint64_t get_number_bytes_source_to_destination();
-  uint64_t get_number_bytes_destination_to_source();
+  uint32_t get_number_packets_source_to_destination() const;
+  uint32_t get_number_packets_destination_to_source() const;
+  uint64_t get_number_bytes_source_to_destination() const;
+  uint64_t get_number_bytes_destination_to_source() const;
 
   void add_packet(const u_char *packet, const struct pcap_pkthdr *header);
-  uint32_t get_number_packets();
-  uint64_t get_number_bytes();
-  uint64_t get_window();
+  uint32_t get_number_packets() const;
+  uint64_t get_number_bytes() const;
 
-  struct timeval get_duration();
+  struct timeval get_duration() const;
 
   struct Status get_status();
 
   struct timeval get_rtt();
+
+  std::vector<struct timeval> get_rtt_list();
 
   std::vector<const u_char *> packets;
   std::vector<const struct pcap_pkthdr *> pcap_packet_headers;
