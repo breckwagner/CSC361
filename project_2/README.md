@@ -1,31 +1,25 @@
 # CSc 361: Computer Communications and Networks (Spring 2016)
-## Assignment 2
+## Assignment 2 - README
 
 https://courses1.csc.uvic.ca/courses/2016/spring/csc/361
 
 ### Requirements
-
 pcap library: libpcap, libpcap-dev
 
-
-
 ### Compiling
-
 ```bash
 $ make
 ```
 
 ### Running
-
 ```bash
 $ ./run <pcap>
 ```
 
-
 # Explanations / Design Decisions
 
-
-The duration was calculated using the GNU code for timeval_subtract:
+The duration was calculated using the GNU code for "timeval_subtract" and
+ derivations of that method:
 
 ```c++
 int timeval_subtract(struct timeval *result, struct timeval *x,
@@ -52,7 +46,7 @@ int timeval_subtract(struct timeval *result, struct timeval *x,
 }
 ```
 
-additionally, because no output format was specified for times, I have been outputting them using the method from the example Berkley code:
+Additionally, because no output format was specified for times, I have been outputting them using the method from the example Berkley code:
 
 const char *timestamp_string(struct timeval ts);
 

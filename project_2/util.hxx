@@ -17,30 +17,26 @@
 //#include <stdio.h>
 //#include <unistd.h>
 //#include <netinet/in.h>
-
-//#include <net/if.h>
-
-#include <netinet/ip.h>
-#include <netinet/if_ether.h>
-#include <pcap.h>
-
-/******************************************************************************/
-//#include <sys/time.h>
-#include <stdlib.h>
-#include <assert.h>
-/******************************************************************************/
-
 //#include <sys/socket.h>
+//#include <net/if.h>
+//#include <sys/time.h>
 
 #include <arpa/inet.h>
+#include <netinet/ip.h>
+#include <netinet/if_ether.h>
 #include <netinet/tcp.h>
+#include <pcap.h>
 
 #include <cstring>
 #include <iostream>
-//#include <string>
-//#include <cstdio>
 #include <functional>
 #include <vector>
+#include <cstdlib>
+
+//#include <algorithm>
+//#include <cmath>
+//#include <string>
+//#include <cstdio>
 //#include <ctime>
 //#include <cstdint>
 

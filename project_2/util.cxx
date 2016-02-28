@@ -310,6 +310,8 @@ struct TCP_hdr *get_tcp_header(const u_char *packet) {
 
 const u_char *get_payload(const struct pcap_pkthdr *header,
                           const u_char *packet) {
+  if (!is_header_intact(header, packet))
+    throw std::out_of_range("The packet is corrupted or has no payload");
   const u_char *pointer = packet + sizeof(struct ether_header) +
                           (get_ip_header(packet)->ip_hl * 4) +
                           get_tcp_header(packet)->th_off * 4;
@@ -338,7 +340,7 @@ bool is_header_intact(const struct pcap_pkthdr *header, const u_char *packet) {
   if(len < pointer_offset + sizeof(struct TCP_hdr)) return false;
   pointer_offset += get_tcp_header(packet)->th_off * 4;
 
-  return true;
+  return (len >= pointer_offset);
 }
 
 struct timeval get_relative_time(std::vector<Connection> connections) {
