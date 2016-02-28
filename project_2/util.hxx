@@ -32,8 +32,7 @@
 #include <functional>
 #include <vector>
 #include <cstdlib>
-
-//#include <algorithm>
+#include <algorithm>
 //#include <cmath>
 //#include <string>
 //#include <cstdio>
