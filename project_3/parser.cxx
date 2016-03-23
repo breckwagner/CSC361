@@ -13,16 +13,45 @@
 
 #include "util.hxx"
 
-void print_output();
+void print_output(std::vector<Packet> packets);
 
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet);
+
+/*
+*/
+int get_first_traceroute_packet(std::vector<Packet> packets) {
+  for (int i = 0; i < packets.size(); i++) {
+    if (get_ip_header(packets.at(i).packet)->ip_ttl == 1) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+void compile_hops(std::vector<Hop> *hops, std::vector<Packet> packets) {
+  Packet first = packets.at(get_first_traceroute_packet(packets));
+
+  for (int i = 0; i < packets.size(); i++) {
+    if (get_ip_header(first.packet)->ip_src.s_addr ==
+        get_ip_header(packets.at(i).packet)->ip_src.s_addr) {
+      for(int j = 0; j < hops->size(); j++) {
+        //if(hops->at(j)) {
+        //  myvector.insert ( it , 200 );
+        //}
+      }
+    }
+  }
+}
 
 /**
  *
  */
 int main(int argc, char **argv) {
+  std::vector<Packet> packets;
+  std::vector<Hop> hops;
   struct bpf_program fp;
+  char *filter = (char *)"";
 
   if (argc < 2) {
     std::cerr << "Usage: " << argv[0] << "<pcap>\n";
@@ -39,7 +68,7 @@ int main(int argc, char **argv) {
   }
 
   /* Lets try and compile the program.. non-optimized */
-  if (pcap_compile(descr, &fp, "", 0, PCAP_NETMASK_UNKNOWN) == -1) {
+  if (pcap_compile(descr, &fp, filter, 0, PCAP_NETMASK_UNKNOWN) == -1) {
     std::cerr << "Error calling pcap_compile\n";
     return EXIT_FAILURE;
   }
@@ -50,9 +79,11 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  pcap_loop(descr, -1, got_packet, NULL);
+  pcap_loop(descr, -1, got_packet, (u_char *)&packets);
 
-  print_output();
+  compile_hops(&hops, packets);
+
+  print_output(packets);
 
   pcap_close(descr);
 
@@ -68,32 +99,64 @@ int main(int argc, char **argv) {
  */
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet) {
+  try {
+    struct pcap_pkthdr *header_copy =
+        (struct pcap_pkthdr *)malloc(sizeof(struct pcap_pkthdr));
+    u_char *packet_copy = (u_char *)malloc(header->caplen);
 
+    memmove(header_copy, header, sizeof(struct pcap_pkthdr));
+    memmove(packet_copy, packet, header->caplen);
 
+    ((std::vector<Packet> *)args)
+        ->emplace_back((Packet){header_copy, packet_copy});
 
-
+  } catch (std::exception &e) {
+    std::cerr << "Exception caught : " << e.what() << std::endl;
+  }
 }
 
-void print_output() {
+/**
+ * A utility function used to print out data in the specified format
+ * @param {u_char *} args is
+ */
+void print_output(std::vector<Packet> packets) {
+
+  Packet first = packets.at(get_first_traceroute_packet(packets));
+
+  std::cout << "The IP address of the source node: "
+            << inet_ntoa(get_ip_header(first.packet)->ip_src) << std::endl;
+
+  std::cout << "The IP address of ultimate destination node: "
+            << inet_ntoa(get_ip_header(first.packet)->ip_dst) << std::endl;
+
+  std::cout << "The IP addresses of the intermediate destination nodes: "
+            << std::endl;
+
   /*
-The IP address of the source node: 192.168.1.12
-The IP address of ultimate destination node: 10.216.216.2
-The IP addresses of the intermediate destination nodes:
-router 1: 24.218.01.102,
-router 2: 24.221.10.103,
-router 3: 10.215.118.1.
-
-The values in the protocol field of IP headers:
-1: ICMP
-17: UDP
-
-
-The number of fragments created from the original datagram is: 3
-The offset of the last fragment is: 3680
-
-The avg RRT between 192.168.1.12 and 24.218.01.102 is: 50 ms, the s.d. is: 5 ms
-The avg RRT between 192.168.1.12 and 24.221.10.103 is: 100 ms, the s.d. is: 6 ms
-The avg RRT between 192.168.1.12 and 10.215.118.1 is: 150 ms, the s.d. is: 5 ms
-The avg RRT between 192.168.1.12 and 10.216.216.2 is: 200 ms, the s.d. is: 15 ms
+    for(int i = 0; i < packets.size(); i++) {
+      std::cout << "router " << i + 1 << ": "
+                << ""
+                << std::endl;
+    }
   */
+
+  std::cout << "The values in the protocol field of IP headers: "
+            << "" << std::endl;
+
+  std::cout << "The number of fragments created from the original datagram is: "
+            << "" << std::endl;
+
+  std::cout << "The offset of the last fragment is: "
+            << "" << std::endl;
+
+  std::cout << "The avg RRT between "
+            << ""
+            << " and "
+            << ""
+            << " is: "
+            << ""
+            << " ms, the s.d. is: "
+            << ""
+            << " ms"
+            << "" << std::endl;
 }
