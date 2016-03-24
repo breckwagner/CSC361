@@ -89,6 +89,17 @@ struct TCP_hdr *get_tcp_header(const u_char *packet) {
   return (struct TCP_hdr *)pointer;
 }
 
+/**
+ * @param {const u_char *} packet
+ * @return {struct TCP_hdr *}
+ */
+struct udphdr *get_udp_header(const u_char *packet) {
+  const u_char *pointer =
+      packet + sizeof(struct ether_header) + (get_ip_header(packet)->ip_hl * 4);
+  return (struct udphdr *)pointer;
+}
+
+
 const u_char *get_payload(const struct pcap_pkthdr *header,
                           const u_char *packet) {
   if (!is_header_intact(header, packet))

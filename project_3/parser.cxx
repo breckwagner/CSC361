@@ -13,16 +13,39 @@
 
 #include "util.hxx"
 
+#define MAX_TTL 30
+
 void print_output(std::vector<Packet> packets);
 
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet);
 
+std::vector<Packet> request_packets;
+
+bool vet_traceroute (Packet * packet) {
+  struct ether_header * ethernet_header = get_ether_header(packet->packet);
+  struct ip * ip_header = get_ip_header(packet->packet);
+  switch (ip_header->ip_p) {
+    case 1: // ICMP
+    case 6: // TCP
+      return true;
+    case 17: // UDP
+      struct udphdr * udp_header = get_udp_header(packet->packet);
+
+      // UDP traceroute "unlikely UDP ports"
+      return (ntohs(udp_header->uh_dport) >= 33434 &&
+              ntohs(udp_header->uh_dport) <= 33534);
+  }
+  return false;
+}
+
 /*
 */
 int get_first_traceroute_packet(std::vector<Packet> packets) {
+  Packet * tmp;
   for (int i = 0; i < packets.size(); i++) {
-    if (get_ip_header(packets.at(i).packet)->ip_ttl == 1) {
+    tmp = &(packets.at(i));
+    if (get_ip_header(tmp->packet)->ip_ttl == 1 && vet_traceroute(tmp)) {
       return i;
     }
   }
@@ -30,18 +53,65 @@ int get_first_traceroute_packet(std::vector<Packet> packets) {
 }
 
 void compile_hops(std::vector<Hop> *hops, std::vector<Packet> packets) {
-  Packet first = packets.at(get_first_traceroute_packet(packets));
+  int index_first = get_first_traceroute_packet(packets);
+  if(index_first == -1) return;
+
+  Packet first = packets.at(index_first);
+  Packet * tmp;
+
+  for (int i = 0; i < packets.size(); i++) {
+    tmp = &(packets.at(i));
+    if ((get_ip_header(first.packet)->ip_src.s_addr ==
+        get_ip_header(packets.at(i).packet)->ip_src.s_addr) &&
+        get_ip_header(first.packet)->ip_dst.s_addr ==
+        get_ip_header(packets.at(i).packet)->ip_dst.s_addr){
+      request_packets.emplace_back(*tmp);
+    }
+  }
+
+  std::cout << request_packets.size() << std::endl;
+
+
+/*
+  // Find traceroute request packets
+  for(uint8_t ttl = 1; ttl <= MAX_TTL; ttl++) {
+    Hop tmp_hop;
+    hops->emplace_back(tmp_hop);
+    for (int i = 0; i < packets.size(); i++) {
+      if (get_ip_header(first.packet)->ip_src.s_addr ==
+          get_ip_header(packets.at(i).packet)->ip_src.s_addr) {
+        tmp = &(packets.at(i));
+        uint8_t ttl_tmp = get_ip_header(tmp->packet)->ip_ttl;
+        if(vet_traceroute(tmp) && ttl_tmp == ttl) {
+          //hops->at(ttl).request_packets.insert(hops->at(ttl).request_packets.begin(),packets.at(i));
+          std::cout << i << std::endl;
+        }
+      }
+    }
+    // If no request packet with specified ttl, assume tracerout finished
+    if (hops->at(ttl) == NULL) {
+      hops->pop_back();
+      break;
+    }
+
+  }
+
+
+  // Find traceroute response packets
+
 
   for (int i = 0; i < packets.size(); i++) {
     if (get_ip_header(first.packet)->ip_src.s_addr ==
         get_ip_header(packets.at(i).packet)->ip_src.s_addr) {
       for(int j = 0; j < hops->size(); j++) {
-        //if(hops->at(j)) {
-        //  myvector.insert ( it , 200 );
-        //}
+        if(true) {
+
+          //hops->insert ( hops->begin() , 200 );
+        }
       }
     }
   }
+  */
 }
 
 /**

@@ -18,7 +18,19 @@
 #include <netinet/ip.h>
 #include <netinet/if_ether.h>
 #include <netinet/tcp.h>
+#include <netinet/udp.h>
+#include <netinet/ip_icmp.h>
 #include <pcap.h>
+
+/*
+RTT use sequance number to match packets
+
+Message fragmentation flag in ICMP is MF=1
+
+fragmet count every packet that is fragmented
+
+offset of last fragment
+*/
 
 #include <cstring>
 #include <iostream>
@@ -79,6 +91,8 @@ struct ether_header *get_ether_header(const u_char *packet);
 struct ip *get_ip_header(const u_char *packet);
 
 struct TCP_hdr *get_tcp_header(const u_char *packet);
+
+struct udphdr *get_udp_header(const u_char *packet);
 
 const u_char *get_payload(const struct pcap_pkthdr *header,
                           const u_char *packet);
