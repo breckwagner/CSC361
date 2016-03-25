@@ -34,6 +34,7 @@ offset of last fragment
 
 #include <cstring>
 #include <iostream>
+#include <iomanip>
 #include <functional>
 #include <vector>
 #include <map>
