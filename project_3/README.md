@@ -6,6 +6,17 @@ https://courses1.csc.uvic.ca/courses/2016/spring/csc/361
 ### Requirements
 pcap library: libpcap, libpcap-dev
 
+### Assumptions
+For the purpose of simplifying the problem, we will assume that
+  - two traceroute commands will not overlap in the packet stream if they have
+    the same ip.dst and ip.src
+  - the traceroute will use all standard plags with the exception of the
+    UDP/ICMP select flag
+  -
+  -
+  -
+  -
+
 ### Compiling
 ```bash
 $ make
@@ -13,8 +24,13 @@ $ make
 
 ### Running
 ```bash
-$ ./run <pcap>
+$ ./run <capture file>
 ```
+
+### Notes
+Useful Filters
+ - ip.flags.mf==1 || ip.frag_offset>0
+ - ip.src==<source address> && ip.dst==<destination address>
 
 
 
