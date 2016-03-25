@@ -37,6 +37,7 @@ offset of last fragment
 #include <iomanip>
 #include <functional>
 #include <vector>
+#include <iterator>
 #include <map>
 #include <cstdlib>
 #include <algorithm>
@@ -259,6 +260,7 @@ struct TCP_hdr {
 typedef struct {
   const struct pcap_pkthdr *header;
   const u_char *packet;
+  uint64_t index;
 } Packet;
 
 typedef struct {

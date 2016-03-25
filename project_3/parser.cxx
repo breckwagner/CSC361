@@ -31,12 +31,6 @@ std::vector<Packet> packets;
 
 std::vector<Packet> request_packets;
 
-std::vector<Packet> response_packets;
-
-std::vector<std::string> response_ips;
-
-std::map<uint8_t, uint64_t> protocols;
-
 /*******************************************************************************
  * Function Declarations
 *******************************************************************************/
@@ -87,7 +81,19 @@ uint8_t get_icmp_type () {
 #endif
 }*/
 
-std::string print_packet(Packet * packet) {
+std::string print_packet(Packet packet) {
+  std::string output;
+  std::string id = std::to_string(htons(get_ip_header(packet.packet)->ip_id));
+  std::string src(inet_ntoa(get_ip_header(packet.packet)->ip_src));
+  std::string dst(inet_ntoa(get_ip_header(packet.packet)->ip_dst));
+  uint16_t offset = htons(get_ip_header(packet.packet)->ip_off);
+
+  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +"| ip.mf==" +
+      std::to_string((bool)(offset & IP_MF)) + "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
+  return output;
+}
+
+std::string print_packet_ptr(Packet * packet) {
   std::string output;
   std::string id = std::to_string(htons(get_ip_header(packet->packet)->ip_id));
   std::string src(inet_ntoa(get_ip_header(packet->packet)->ip_src));
@@ -126,9 +132,58 @@ bool is_same_packet_weak_ip(struct ip *a, struct ip *b) {
     return a_udp->uh_dport == b_udp->uh_dport &&
            a_udp->uh_sport == b_udp->uh_sport;
   }
-  return true;
+  return false;
 }
 
+
+int64_t get_response(uint64_t index) {
+  Packet * packet = &(packets.at(index));
+  std::cout << "[" << index << "]" << std::endl;
+  for (uint64_t i = index+1; i < packets.size(); i++) {
+    if (get_ether_header(packets.at(i).packet)->ether_type != 0x800 &&
+        get_ip_header(packets.at(i).packet)->ip_p == PROTOCOL_TYPE::ICMP &&
+        // get_icmp_header((packets.at(i)).packet)->type==ICMP_TIME_EXCEEDED &&
+	// TODO this ^- needs to be checked BSD not compatible
+        true)
+    {
+      //std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
+      struct ip * ip_header = (struct ip *) get_payload_icmp(packets.at(i).packet);
+      //std::cout << i+1 << "|" << htons(ip_header->ip_id) << std::endl;
+      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header))
+      {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+/**
+ * @brief Uses the id field in the IP header to match fragments
+ * @param index the index in the list of the first fragment of the packet
+ * @return a list of the fragments including the first fragment
+ *
+ * TODO: consider returning std::vector<Packet *> to save memory
+ */
+std::vector<Packet> get_fragments(uint64_t index) {
+  std::vector<Packet> output;
+  Packet *packet = &(packets.at(index));
+  output.emplace_back(*packet);
+
+  for (uint64_t i = index+1; i < packets.size(); i++) {
+    if (get_ether_header(packets.at(i).packet)->ether_type != 0x800)
+    {
+      struct ip * ip_header = (struct ip *) get_ip_header(packets.at(i).packet);
+      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header))
+      {
+        output.emplace_back(packets.at(i));
+      }
+    }
+  }
+
+  return output;
+}
+/*
 std::vector<Packet> get_response_fragments(uint64_t index) {
   std::vector<Packet> output;
   Packet *packet = &(packets.at(index));
@@ -138,17 +193,20 @@ std::vector<Packet> get_response_fragments(uint64_t index) {
         get_ip_header(packets.at(i).packet)->ip_p == PROTOCOL_TYPE::ICMP &&
         // get_icmp_header((packets.at(i)).packet)->type==ICMP_TIME_EXCEEDED &&
 	// TODO this ^- needs to be checked BSD not compatible
-        true) {
-	//std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
+        true)
+    {
+      std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
       struct ip * ip_header = (struct ip *) get_payload_icmp(packets.at(i).packet);
-      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header)) {
+      std::cout << i+1 << "|" << htons(ip_header->ip_id) << std::endl;
+      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header))
+      {
         output.emplace_back(packets.at(i));
       }
     }
   }
 
   return output;
-}
+}*/
 
 struct timeval get_packet_timestamp(Packet *packet) {
   return (struct timeval){packet->header->ts.tv_sec,
@@ -172,12 +230,24 @@ const u_char *get_payload_icmp(const u_char *packet) {
 
 // TODO/NOTE: The identification field in the linux udp trace file was modified
 // Find a way to look at other fields to still match
-void compile_response_ips(void) {
+
+std::vector<Packet *> compile_requests(void) {
+  std::vector<Packet *> output;
   uint8_t ttl_tmp = 1;
-  // std::cout << "first: " << get_first_traceroute_packet(packets) <<
-  // std::endl;
   for (uint64_t i = 0; i < packets.size(); i++) {
-      std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
+    if (get_ip_header(packets.at(i).packet)->ip_ttl == ttl_tmp &&
+        weak_is_traceroute_packet(&(packets.at(i)))) {
+      output.emplace_back(&(packets.at(i)));
+      ++ttl_tmp;
+    }
+  }
+  return output;
+}
+
+std::vector<Packet *> compile_responses(void) {
+  std::vector<Packet *> output;
+  uint8_t ttl_tmp = 1;
+  for (uint64_t i = 0; i < packets.size(); i++) {
     if (get_ip_header(packets.at(i).packet)->ip_ttl == ttl_tmp &&
         weak_is_traceroute_packet(&(packets.at(i)))) {
       for (uint64_t j = i + 1; j < packets.size(); j++) {
@@ -189,12 +259,8 @@ void compile_response_ips(void) {
                 (struct ip *)get_payload_icmp(packets.at(j).packet);
             if (ip_header->ip_id ==
                 get_ip_header(packets.at(i).packet)->ip_id) {
-        	//std::cout << get_response_fragments(&(packets.at(i))).size() << std::endl;
-        	std::cout << get_response_fragments(i).size() << std::endl;
-              // std::cout << "i:" << i << "| j:" << j << std::endl;
-              // std::cout << ip_header->ip_id << std::endl;
-              response_ips.emplace_back(
-                  inet_ntoa(get_ip_header(packets.at(j).packet)->ip_src));
+        	//std::cout << get_fragments(i).size() << std::endl;
+              output.emplace_back(&(packets.at(j)));
             }
           }
         }
@@ -202,6 +268,16 @@ void compile_response_ips(void) {
       ++ttl_tmp;
     }
   }
+  return output;
+}
+
+std::vector<std::string> compile_response_ips(std::vector<Packet *> ) {
+  std::vector<std::string> output;
+  for(Packet * i : compile_responses()) {
+      output.emplace_back(
+                        inet_ntoa(get_ip_header(i->packet)->ip_src));
+  }
+  return output;
 }
 
 bool weak_is_traceroute_packet(Packet *packet) {
@@ -231,7 +307,7 @@ std::string protocol_number_to_string(uint8_t protocol) {
   case PROTOCOL_TYPE::TCP:
     return "TCP";
   default:
-    return "UNKNOWN";
+    return "OTHER";
   }
 }
 
@@ -249,12 +325,11 @@ int get_first_traceroute_packet(std::vector<Packet> packets) {
   return -1;
 }
 
-void compile_hops(std::vector<Hop> *hops) {
-  int index_first = 0;
-  if (index_first == -1)
+void compile_hops(int64_t index) {
+  if (index == -1)
     return;
 
-  Packet first = packets.at(index_first);
+  Packet first = packets.at(index);
   Packet *tmp;
 
   for (int i = 0; i < packets.size(); i++) {
@@ -271,6 +346,9 @@ void compile_hops(std::vector<Hop> *hops) {
 void print_output(void) {
 
   Packet first = packets.at(get_first_traceroute_packet(packets));
+  std::vector<Packet *> requests = compile_requests();
+  std::vector<Packet *> responses = compile_responses();
+  std::vector<std::string> response_ips = compile_response_ips(responses);
 
   std::cout << "The IP address of the source node: "
             << inet_ntoa(get_ip_header(first.packet)->ip_src) << std::endl;
@@ -281,12 +359,22 @@ void print_output(void) {
   std::cout << "The IP addresses of the intermediate destination nodes: "
             << std::endl;
 
-  for (int i = 0; i < response_ips.size(); i++) {
-    std::cout << "    "
-              << "router " << i + 1 << ": " << response_ips.at(i) << std::endl;
+  //for (int i = 0; i < response_ips.size(); i++) {
+  //  std::cout << "    "
+  //            << "router " << i + 1 << ": " << response_ips.at(i) << std::endl;
+  //}
+
+  for (uint32_t i = 0; i < requests.size(); i++) {
+      int32_t j;
+      if((j = get_response(requests.at(i)->index)) != -1) {
+	  std::cout << "    "
+	            << "router " << i + 1 << ": " << inet_ntoa(get_ip_header(packets.at(j).packet)->ip_src) << std::endl;
+      }
   }
 
   std::cout << std::endl;
+
+  std::map<uint8_t, uint64_t> protocols;
 
   for (int i = 0; i < packets.size(); i++) {
     uint8_t protocol = get_ip_header(packets.at(i).packet)->ip_p;
@@ -331,7 +419,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
     memmove(packet_copy, packet, header->caplen);
 
     ((std::vector<Packet> *)args)
-        ->emplace_back((Packet){header_copy, packet_copy});
+        ->emplace_back((Packet){header_copy, packet_copy, packets.size()});
 
   } catch (std::exception &e) {
     std::cerr << "Exception caught : " << e.what() << std::endl;
@@ -339,7 +427,6 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header,
 }
 
 int main(int argc, char **argv) {
-  std::vector<Hop> hops;
   struct bpf_program fp;
   const u_char *packet;
   struct pcap_pkthdr header;
@@ -369,44 +456,10 @@ int main(int argc, char **argv) {
     std::cerr << "Error setting filter" << std::endl;
     return EXIT_FAILURE;
   }
-  /*
-  while (true) {
-    if ((packet = pcap_next(descr, &header)) != NULL) {
-      Packet p = (Packet){&header, packet};
-      if (weak_is_traceroute_packet(&p)) {
-        first_traceroute_packet = p;
-        std::string output;
-        std::string src(inet_ntoa(get_ip_header(p.packet)->ip_src));
-        std::string dst(inet_ntoa(get_ip_header(p.packet)->ip_dst));
-        output = "ip.src==" + src + "&& ip.dst==" + dst;
-
-        // filter = (char *) output.c_str();
-        break;
-      }
-    } else {
-      std::cerr << "Couldn't find a traceroute packet" << std::endl;
-      return EXIT_FAILURE;
-    }
-  }
-  */
-
-  // Lets try and compile the program.. non-optimized
-  if (pcap_compile(descr, &fp, filter, 0, PCAP_NETMASK_UNKNOWN) == -1) {
-    std::cerr << "Error calling pcap_compile" << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  // set the compiled program as the filter
-  if (pcap_setfilter(descr, &fp) == -1) {
-    std::cerr << "Error setting filter" << std::endl;
-    return EXIT_FAILURE;
-  }
 
   pcap_loop(descr, -1, got_packet, (u_char *)&packets);
 
-  compile_response_ips();
-
-  compile_hops(&hops);
+  compile_hops(0);
 
   print_output();
 
