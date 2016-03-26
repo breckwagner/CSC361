@@ -364,14 +364,6 @@ void compile_hops(int64_t index) {
   }
 }
 
-double standard_deviation(std::vector<double> v, double avg)
-{
-       double E = 0;
-       for(int i = 0; i < v.size(); i++)
-               E+=(v[i] - avg)*(v[i] - avg);
-       return sqrt(1/v.size()*E);
-}
-
 void print_output(void) {
 
   Packet first = packets.at(get_first_traceroute_packet(packets));
@@ -466,7 +458,9 @@ void print_output(void) {
 		  return a + b / time_delta.size();
 		}))
 		<< " ms, the s.d. is: "
-		<< standard_deviation(time_delta, mean)
+		<< sqrt(std::accumulate(time_delta.begin(), time_delta.end(), 0.0, [&](double a, double b){
+	          return pow(b - mean, 2.0);
+	        }) / (time_delta.size() - 1))
 		<< " ms"
 		<< std::endl;
     }
