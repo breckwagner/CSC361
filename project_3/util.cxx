@@ -25,6 +25,10 @@ const char *timestamp_string(struct timeval ts) {
   return timestamp_string_buf;
 }
 
+uint64_t timestamp_to_ms(struct timeval ts) {
+  return (ts.tv_sec * 1000) + (ts.tv_usec / 1000); // NOTE: truncation of microseconds
+}
+
 /* Subtract the ‘struct timeval’ values X and Y,
    storing the result in RESULT.
    Return 1 if the difference is negative, otherwise 0. */
@@ -144,7 +148,7 @@ std::string get_protocal(uint8_t protocol_number) {
   }
 }
 
-int _is_same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
+int is_same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
                         struct in_addr ip_a_dst, uint16_t port_a_dst,
                         struct in_addr ip_b_src, uint16_t port_b_src,
                         struct in_addr ip_b_dst, uint16_t port_b_dst,
@@ -152,7 +156,7 @@ int _is_same_connection(struct in_addr ip_a_src, uint16_t port_a_src,
   return ((ip_a_src.s_addr == ip_b_src.s_addr) &&
           (ip_a_dst.s_addr == ip_b_dst.s_addr) && (port_a_src == port_b_src) &&
           (port_a_dst == port_b_dst)) ||
-         (recursion && _is_same_connection(ip_a_src, port_a_src, ip_a_dst,
+         (recursion && is_same_connection(ip_a_src, port_a_src, ip_a_dst,
                                            port_a_dst, ip_b_dst, port_b_dst,
                                            ip_b_src, port_b_src, false));
 }

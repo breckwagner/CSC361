@@ -155,3 +155,47 @@ Total Weight 100
 102 specication should be checked and all values should be dealt with appropriately.
 103 The End
 4
+
+
+
+
+
+(1) Regarding the output format
+
+"The number of fragments created from the original datagram is:
+
+ The offset of the last fragment is:"
+
+
+
+If there are multiple fragmented datagrams, you need to output the above information for each datagram. For example, assume that the source send two datagrams: D1, D2, (where D1 and D2 are the identification of the two datagram) and D1 has three fragments and D2 has two fragments. Then output should be:
+
+"The number of fragments created from the original datagram D1 is: 3
+
+ The offset of the last fragment is: xxx.
+
+
+
+"The number of fragments created from the original datagram D2 is: 2
+
+ The offset of the last fragment is: xxx.
+
+
+
+(2) It has been found out that in the tracefile captured in Linux, the ID of the original UDP cannot be used to match against the ID field within the data of the returned ICMP error message.  We do not have such a problem in the tracefile captured in Windows.
+
+Currently, I do not have an answer to this strange phenomenon observed in the Linux trace. It seems that the intermediate routes changed the ID value in the IP header of the original UDP, while they are supposed to simply copy the IP header into the ICMP data.  
+
+Nevertheless, the source port number included in the original UDP can be used to match against the ICMP error message. since this is a new finding in linux tracefile, students who do the extra work using UDP source port to match original UDP datagram and ICMP message will get 10% bonus (10% of Assignment 3).
+
+
+
+In addition, the student who can first explain the "abnormal" behavior in the linux trace described in (2) will get another 10% bonus (10% of Assignment 3). You need to post your explanation to Connex Chatroom. The first student who finds the right answer (judged by me) gets this 10 % bonus.
+
+
+
+Best regards.
+
+ 
+
+Kui Wu

@@ -33,10 +33,12 @@ offset of last fragment
 */
 
 #include <cstring>
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <functional>
 #include <vector>
+#include <numeric>
 #include <iterator>
 #include <map>
 #include <cstdlib>
@@ -269,6 +271,8 @@ typedef struct {
 } Hop;
 
 const char *timestamp_string(struct timeval ts);
+
+uint64_t timestamp_to_ms(struct timeval ts);
 
 int timeval_subtract(struct timeval *result, struct timeval *x,
                      struct timeval *y);

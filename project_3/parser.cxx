@@ -88,20 +88,22 @@ std::string print_packet(Packet packet) {
   std::string dst(inet_ntoa(get_ip_header(packet.packet)->ip_dst));
   uint16_t offset = htons(get_ip_header(packet.packet)->ip_off);
 
-  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +"| ip.mf==" +
-      std::to_string((bool)(offset & IP_MF)) + "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
+  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +
+           "| ip.mf==" + std::to_string((bool)(offset & IP_MF)) +
+           "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
   return output;
 }
 
-std::string print_packet_ptr(Packet * packet) {
+std::string print_packet_ptr(Packet *packet) {
   std::string output;
   std::string id = std::to_string(htons(get_ip_header(packet->packet)->ip_id));
   std::string src(inet_ntoa(get_ip_header(packet->packet)->ip_src));
   std::string dst(inet_ntoa(get_ip_header(packet->packet)->ip_dst));
   uint16_t offset = htons(get_ip_header(packet->packet)->ip_off);
 
-  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +"| ip.mf==" +
-      std::to_string((bool)(offset & IP_MF)) + "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
+  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +
+           "| ip.mf==" + std::to_string((bool)(offset & IP_MF)) +
+           "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
   return output;
 }
 
@@ -110,9 +112,9 @@ bool is_same_packet_weak(Packet *a, Packet *b) {
     return false;
   if (get_ether_header(b->packet)->ether_type != 0x800)
     return false;
-  if (get_ip_header(a->packet)->ip_id == get_ip_header(b->packet)->ip_id)
+  if (get_ip_header(a->packet)->ip_src.s_addr == get_ip_header(b->packet)->ip_src.s_addr &&
+      get_ip_header(a->packet)->ip_dst.s_addr == get_ip_header(b->packet)->ip_dst.s_addr)
     return true;
-
   if (get_ip_header(a->packet)->ip_p == PROTOCOL_TYPE::UDP &&
       get_ip_header(b->packet)->ip_p == PROTOCOL_TYPE::UDP) {
     return get_udp_header(a->packet)->uh_dport ==
@@ -122,35 +124,47 @@ bool is_same_packet_weak(Packet *a, Packet *b) {
   }
   return false;
 }
+
+bool is_same_packet_strict(Packet *a, Packet *b) {
+  if (get_ether_header(a->packet)->ether_type != 0x800)
+    return false;
+  if (get_ether_header(b->packet)->ether_type != 0x800)
+    return false;
+  if (get_ip_header(a->packet)->ip_id == get_ip_header(b->packet)->ip_id)
+    return is_same_packet_weak(a, b);
+  return false;
+}
+
+bool is_same_src_dst (Packet *a, Packet *b) {
+  return (get_ip_header(a->packet)->ip_src.s_addr==get_ip_header(b->packet)->ip_src.s_addr) &&
+         (get_ip_header(a->packet)->ip_dst.s_addr==get_ip_header(b->packet)->ip_dst.s_addr);
+}
+
 bool is_same_packet_weak_ip(struct ip *a, struct ip *b) {
   if (a->ip_id == b->ip_id)
     return true;
 
   if (a->ip_p == PROTOCOL_TYPE::UDP && b->ip_p == PROTOCOL_TYPE::UDP) {
-    struct udphdr *a_udp = (struct udphdr *) a + a->ip_hl * 4;
-    struct udphdr *b_udp = (struct udphdr *) b + b->ip_hl * 4;
+    struct udphdr *a_udp = (struct udphdr *)a + a->ip_hl * 4;
+    struct udphdr *b_udp = (struct udphdr *)b + b->ip_hl * 4;
     return a_udp->uh_dport == b_udp->uh_dport &&
            a_udp->uh_sport == b_udp->uh_sport;
   }
   return false;
 }
-
-
 int64_t get_response(uint64_t index) {
-  Packet * packet = &(packets.at(index));
-  std::cout << "[" << index << "]" << std::endl;
-  for (uint64_t i = index+1; i < packets.size(); i++) {
+  Packet *packet = &(packets.at(index));
+  for (uint64_t i = index + 1; i < packets.size(); i++) {
     if (get_ether_header(packets.at(i).packet)->ether_type != 0x800 &&
         get_ip_header(packets.at(i).packet)->ip_p == PROTOCOL_TYPE::ICMP &&
         // get_icmp_header((packets.at(i)).packet)->type==ICMP_TIME_EXCEEDED &&
-	// TODO this ^- needs to be checked BSD not compatible
-        true)
-    {
-      //std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
-      struct ip * ip_header = (struct ip *) get_payload_icmp(packets.at(i).packet);
-      //std::cout << i+1 << "|" << htons(ip_header->ip_id) << std::endl;
-      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header))
-      {
+        // TODO this ^- needs to be checked BSD not compatible
+        true) {
+      // std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
+      struct ip *ip_header =
+          (struct ip *)get_payload_icmp(packets.at(i).packet);
+      // std::cout << i+1 << "|" << htons(ip_header->ip_id) << std::endl;
+      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header)) {
         return i;
       }
     }
@@ -170,12 +184,10 @@ std::vector<Packet> get_fragments(uint64_t index) {
   Packet *packet = &(packets.at(index));
   output.emplace_back(*packet);
 
-  for (uint64_t i = index+1; i < packets.size(); i++) {
-    if (get_ether_header(packets.at(i).packet)->ether_type != 0x800)
-    {
-      struct ip * ip_header = (struct ip *) get_ip_header(packets.at(i).packet);
-      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header))
-      {
+  for (uint64_t i = index + 1; i < packets.size(); i++) {
+    if (get_ether_header(packets.at(i).packet)->ether_type != 0x800) {
+      struct ip *ip_header = (struct ip *)get_ip_header(packets.at(i).packet);
+      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header)) {
         output.emplace_back(packets.at(i));
       }
     }
@@ -192,11 +204,12 @@ std::vector<Packet> get_response_fragments(uint64_t index) {
     if (get_ether_header(packets.at(i).packet)->ether_type != 0x800 &&
         get_ip_header(packets.at(i).packet)->ip_p == PROTOCOL_TYPE::ICMP &&
         // get_icmp_header((packets.at(i)).packet)->type==ICMP_TIME_EXCEEDED &&
-	// TODO this ^- needs to be checked BSD not compatible
+        // TODO this ^- needs to be checked BSD not compatible
         true)
     {
       std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
-      struct ip * ip_header = (struct ip *) get_payload_icmp(packets.at(i).packet);
+      struct ip * ip_header = (struct ip *)
+get_payload_icmp(packets.at(i).packet);
       std::cout << i+1 << "|" << htons(ip_header->ip_id) << std::endl;
       if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header))
       {
@@ -212,6 +225,15 @@ struct timeval get_packet_timestamp(Packet *packet) {
   return (struct timeval){packet->header->ts.tv_sec,
                           packet->header->ts.tv_usec};
 }
+
+struct timeval get_delta_time (Packet * a, Packet * b) {
+  struct timeval output;
+  timeval_subtract(&output, (a->header->ts), (b->header->ts));
+
+  return output;
+}
+
+
 
 struct icmphdr *get_icmp_header(const u_char *packet) {
   const u_char *pointer =
@@ -259,7 +281,7 @@ std::vector<Packet *> compile_responses(void) {
                 (struct ip *)get_payload_icmp(packets.at(j).packet);
             if (ip_header->ip_id ==
                 get_ip_header(packets.at(i).packet)->ip_id) {
-        	//std::cout << get_fragments(i).size() << std::endl;
+              // std::cout << get_fragments(i).size() << std::endl;
               output.emplace_back(&(packets.at(j)));
             }
           }
@@ -271,11 +293,10 @@ std::vector<Packet *> compile_responses(void) {
   return output;
 }
 
-std::vector<std::string> compile_response_ips(std::vector<Packet *> ) {
+std::vector<std::string> compile_response_ips(std::vector<Packet *>) {
   std::vector<std::string> output;
-  for(Packet * i : compile_responses()) {
-      output.emplace_back(
-                        inet_ntoa(get_ip_header(i->packet)->ip_src));
+  for (Packet *i : compile_responses()) {
+    output.emplace_back(inet_ntoa(get_ip_header(i->packet)->ip_src));
   }
   return output;
 }
@@ -343,6 +364,14 @@ void compile_hops(int64_t index) {
   }
 }
 
+double standard_deviation(std::vector<double> v, double avg)
+{
+       double E = 0;
+       for(int i = 0; i < v.size(); i++)
+               E+=(v[i] - avg)*(v[i] - avg);
+       return sqrt(1/v.size()*E);
+}
+
 void print_output(void) {
 
   Packet first = packets.at(get_first_traceroute_packet(packets));
@@ -359,17 +388,14 @@ void print_output(void) {
   std::cout << "The IP addresses of the intermediate destination nodes: "
             << std::endl;
 
-  //for (int i = 0; i < response_ips.size(); i++) {
-  //  std::cout << "    "
-  //            << "router " << i + 1 << ": " << response_ips.at(i) << std::endl;
-  //}
-
   for (uint32_t i = 0; i < requests.size(); i++) {
-      int32_t j;
-      if((j = get_response(requests.at(i)->index)) != -1) {
-	  std::cout << "    "
-	            << "router " << i + 1 << ": " << inet_ntoa(get_ip_header(packets.at(j).packet)->ip_src) << std::endl;
-      }
+    int32_t j;
+    if ((j = get_response(requests.at(i)->index)) != -1) {
+      std::cout << "    "
+                << "router " << i + 1 << ": "
+                << inet_ntoa(get_ip_header(packets.at(j).packet)->ip_src)
+                << std::endl;
+    }
   }
 
   std::cout << std::endl;
@@ -387,25 +413,68 @@ void print_output(void) {
 
   std::cout << std::endl;
 
-  std::cout << "The number of fragments created from the original datagram is: "
-            << "" << std::endl;
+  std::cout << "Fragmentation: " << std::endl;
 
-  std::cout << "The offset of the last fragment is: "
-            << "" << std::endl;
+  for (uint32_t i = 0; i < requests.size(); i++) {
+    std::vector<Packet> fragments = get_fragments(requests.at(i)->index);
+    int32_t count = fragments.size();
+    if (count > 1) {
+      uint16_t offset = htons(get_ip_header(fragments.back().packet)->ip_off);
+      std::cout << "    The number of fragments created from the original "
+                   "datagram (Packet "
+                << requests.at(i)->index + 1 << ") is: " << count << std::endl;
+
+      std::cout << "    The offset of the last fragment is: "
+                << std::to_string((offset & 0x1FFF) * 8) << std::endl
+                << std::endl;
+    }
+  }
 
   std::cout << std::endl;
 
-  std::cout << "The avg RRT between "
-            << inet_ntoa(get_ip_header(first.packet)->ip_src) << " and "
-            << ""
-            << " is: "
-            << ""
-            << " ms, the s.d. is: "
-            << ""
-            << " ms"
-            << "" << std::endl;
+
+  for (uint32_t i = 0; i < requests.size(); i++) {
+    std::vector<Packet *> request_dup;
+    std::vector<double> time_delta;
+    uint32_t index = requests.at(i)->index;
+    //request_dup.push_back(requests.at(i));
+
+    for(uint32_t j = index; j < packets.size(); j++) {
+	// NOTE: making assumption that traffic has IP header
+	if(get_ip_header(packets.at(index).packet)->ip_ttl == get_ip_header(packets.at(j).packet)->ip_ttl &&
+	    is_same_src_dst(&(packets.at(index)), &(packets.at(j)))) {
+	    //request_dup.push_back(&(packets.at(j)));
+	    struct timeval result = (struct timeval) {0, 0};
+	    int64_t x = j;
+            int64_t y = get_response(j);
+
+	    if(x!=-1 && y!=-1) {
+	      timeval_subtract(&result, packets.at(y).header->ts, packets.at(x).header->ts);
+	      time_delta.push_back(timestamp_to_ms(result));
+	    }
+	}
+    }
+
+    int32_t j;
+    if ((j = get_response(requests.at(i)->index)) != -1) {
+	double mean = 0.0;
+      std::cout << "The avg RRT between "
+		<< inet_ntoa(get_ip_header(first.packet)->ip_src) << " and "
+		<< inet_ntoa(get_ip_header(packets.at(j).packet)->ip_src)
+		<< " is: "
+		<< (mean = std::accumulate(time_delta.begin(), time_delta.end(), 0.0, [&](double a, double b){
+		  return a + b / time_delta.size();
+		}))
+		<< " ms, the s.d. is: "
+		<< standard_deviation(time_delta, mean)
+		<< " ms"
+		<< std::endl;
+    }
+  }
 
   std::cout << std::endl;
+
+  std::cout << timestamp_string(get_delta_time(&(packets.front()),&(packets.back())));
 }
 
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
