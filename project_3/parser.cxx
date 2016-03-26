@@ -15,6 +15,15 @@
  * Includes
 *******************************************************************************/
 
+#include <cmath>
+#include <iomanip>
+#include <functional>
+#include <numeric>
+#include <iterator>
+#include <map>
+#include <cstdlib>
+#include <algorithm>
+
 #include "util.hxx"
 
 /*******************************************************************************
@@ -371,7 +380,6 @@ void print_output(void) {
   }
 
   std::cout << std::endl;
-
 
 /*
  *  RTT Calculations

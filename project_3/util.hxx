@@ -22,42 +22,9 @@
 #include <netinet/ip_icmp.h>
 #include <pcap.h>
 
-/*
-RTT use sequance number to match packets
-
-Message fragmentation flag in ICMP is MF=1
-
-fragmet count every packet that is fragmented
-
-offset of last fragment
-*/
-
-#include <cstring>
-#include <cmath>
-#include <iostream>
-#include <iomanip>
-#include <functional>
 #include <vector>
-#include <numeric>
-#include <iterator>
-#include <map>
-#include <cstdlib>
-#include <algorithm>
-//#include <cmath>
-//#include <string>
-//#include <cstdio>
-//#include <ctime>
-//#include <cstdint>
-
-/*
-
-struct pcap_pkthdr {
-  struct timeval ts;
-  bpf_u_int32 caplen;
-  bpf_u_int32 len;
-};
-
-*/
+#include <cstring>
+#include <iostream>
 
 enum PROTOCOL_TYPE : uint8_t {
   HOPOPT = 0,
