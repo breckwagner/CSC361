@@ -223,7 +223,6 @@ std::vector<Packet *> compile_responses(void) {
                 (struct ip *)get_payload_icmp(packets.at(j).packet);
             if (ip_header->ip_id ==
                 get_ip_header(packets.at(i).packet)->ip_id) {
-              // std::cout << get_fragments(i).size() << std::endl;
               output.emplace_back(&(packets.at(j)));
             }
           }
