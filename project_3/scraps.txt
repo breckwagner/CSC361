@@ -1,0 +1,70 @@
+Scraps
+
+/*
+uint8_t get_icmp_type () {
+#ifdef __USE_BSD
+  return get_icmp_header((packets.at(i)).packet)->type;
+#else
+  const u_char *pointer =
+      packet + sizeof(struct ether_header) + (get_ip_header(packet)->ip_hl * 4);
+  return (struct icmphdr *)pointer;
+  return get_icmp_header((packets.at(i)).packet)->type;
+#endif
+}*/
+
+std::string print_packet(Packet packet) {
+  std::string output;
+  std::string id = std::to_string(htons(get_ip_header(packet.packet)->ip_id));
+  std::string src(inet_ntoa(get_ip_header(packet.packet)->ip_src));
+  std::string dst(inet_ntoa(get_ip_header(packet.packet)->ip_dst));
+  uint16_t offset = htons(get_ip_header(packet.packet)->ip_off);
+
+  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +
+           "| ip.mf==" + std::to_string((bool)(offset & IP_MF)) +
+           "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
+  return output;
+}
+
+std::string print_packet_ptr(Packet *packet) {
+  std::string output;
+  std::string id = std::to_string(htons(get_ip_header(packet->packet)->ip_id));
+  std::string src(inet_ntoa(get_ip_header(packet->packet)->ip_src));
+  std::string dst(inet_ntoa(get_ip_header(packet->packet)->ip_dst));
+  uint16_t offset = htons(get_ip_header(packet->packet)->ip_off);
+
+  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +
+           "| ip.mf==" + std::to_string((bool)(offset & IP_MF)) +
+           "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
+  return output;
+}
+/*
+std::vector<Packet> get_response_fragments(uint64_t index) {
+  std::vector<Packet> output;
+  Packet *packet = &(packets.at(index));
+
+  for (uint64_t i = index+1; i < packets.size(); i++) {
+    if (get_ether_header(packets.at(i).packet)->ether_type != 0x800 &&
+        get_ip_header(packets.at(i).packet)->ip_p == PROTOCOL_TYPE::ICMP &&
+        // get_icmp_header((packets.at(i)).packet)->type==ICMP_TIME_EXCEEDED &&
+        // TODO this ^- needs to be checked BSD not compatible
+        true)
+    {
+      std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
+      struct ip * ip_header = (struct ip *)
+get_payload_icmp(packets.at(i).packet);
+      std::cout << i+1 << "|" << htons(ip_header->ip_id) << std::endl;
+      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header))
+      {
+        output.emplace_back(packets.at(i));
+      }
+    }
+  }
+
+  return output;
+}*/
+
+
+struct timeval get_packet_timestamp(Packet *packet) {
+  return (struct timeval){packet->header->ts.tv_sec,
+                          packet->header->ts.tv_usec};
+}

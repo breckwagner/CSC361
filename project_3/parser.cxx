@@ -60,6 +60,13 @@ void print_output(void);
 void got_packet(u_char *args, const struct pcap_pkthdr *header,
                 const u_char *packet);
 
+/**
+ * @brief Uses the id field in the IP header to match fragments
+ * @param index the index in the list of the first fragment of the packet
+ * @return a list of the fragments including the first fragment
+ */
+std::vector<Packet *> get_fragments(uint64_t index);
+
 struct icmphdr *get_icmp_header(const u_char *packet);
 
 const u_char *get_payload_icmp(const u_char *packet);
@@ -69,43 +76,7 @@ int main(int argc, char **argv);
 /*******************************************************************************
  * Function Definitions
 *******************************************************************************/
-/*
-uint8_t get_icmp_type () {
-#ifdef __USE_BSD
-  return get_icmp_header((packets.at(i)).packet)->type;
-#else
-  const u_char *pointer =
-      packet + sizeof(struct ether_header) + (get_ip_header(packet)->ip_hl * 4);
-  return (struct icmphdr *)pointer;
-  return get_icmp_header((packets.at(i)).packet)->type;
-#endif
-}*/
 
-std::string print_packet(Packet packet) {
-  std::string output;
-  std::string id = std::to_string(htons(get_ip_header(packet.packet)->ip_id));
-  std::string src(inet_ntoa(get_ip_header(packet.packet)->ip_src));
-  std::string dst(inet_ntoa(get_ip_header(packet.packet)->ip_dst));
-  uint16_t offset = htons(get_ip_header(packet.packet)->ip_off);
-
-  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +
-           "| ip.mf==" + std::to_string((bool)(offset & IP_MF)) +
-           "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
-  return output;
-}
-
-std::string print_packet_ptr(Packet *packet) {
-  std::string output;
-  std::string id = std::to_string(htons(get_ip_header(packet->packet)->ip_id));
-  std::string src(inet_ntoa(get_ip_header(packet->packet)->ip_src));
-  std::string dst(inet_ntoa(get_ip_header(packet->packet)->ip_dst));
-  uint16_t offset = htons(get_ip_header(packet->packet)->ip_off);
-
-  output = "ip.id==" + id + "ip.src==" + src + "| ip.dst==" + dst +
-           "| ip.mf==" + std::to_string((bool)(offset & IP_MF)) +
-           "| ip.offset==" + std::to_string((offset & 0x1FFF) * 8);
-  return output;
-}
 
 bool is_same_packet_weak(Packet *a, Packet *b) {
   if (get_ether_header(a->packet)->ether_type != 0x800)
@@ -172,58 +143,21 @@ int64_t get_response(uint64_t index) {
   return -1;
 }
 
-/**
- * @brief Uses the id field in the IP header to match fragments
- * @param index the index in the list of the first fragment of the packet
- * @return a list of the fragments including the first fragment
- *
- * TODO: consider returning std::vector<Packet *> to save memory
- */
-std::vector<Packet> get_fragments(uint64_t index) {
-  std::vector<Packet> output;
+std::vector<Packet *> get_fragments(uint64_t index) {
+  std::vector<Packet *> output;
   Packet *packet = &(packets.at(index));
-  output.emplace_back(*packet);
+  output.push_back(packet);
 
   for (uint64_t i = index + 1; i < packets.size(); i++) {
     if (get_ether_header(packets.at(i).packet)->ether_type != 0x800) {
       struct ip *ip_header = (struct ip *)get_ip_header(packets.at(i).packet);
       if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header)) {
-        output.emplace_back(packets.at(i));
+        output.push_back(&(packets.at(i)));
       }
     }
   }
 
   return output;
-}
-/*
-std::vector<Packet> get_response_fragments(uint64_t index) {
-  std::vector<Packet> output;
-  Packet *packet = &(packets.at(index));
-
-  for (uint64_t i = index+1; i < packets.size(); i++) {
-    if (get_ether_header(packets.at(i).packet)->ether_type != 0x800 &&
-        get_ip_header(packets.at(i).packet)->ip_p == PROTOCOL_TYPE::ICMP &&
-        // get_icmp_header((packets.at(i)).packet)->type==ICMP_TIME_EXCEEDED &&
-        // TODO this ^- needs to be checked BSD not compatible
-        true)
-    {
-      std::cout << i+1 << "|" << print_packet(&(packets.at(i))) << std::endl;
-      struct ip * ip_header = (struct ip *)
-get_payload_icmp(packets.at(i).packet);
-      std::cout << i+1 << "|" << htons(ip_header->ip_id) << std::endl;
-      if (is_same_packet_weak_ip(get_ip_header(packet->packet), ip_header))
-      {
-        output.emplace_back(packets.at(i));
-      }
-    }
-  }
-
-  return output;
-}*/
-
-struct timeval get_packet_timestamp(Packet *packet) {
-  return (struct timeval){packet->header->ts.tv_sec,
-                          packet->header->ts.tv_usec};
 }
 
 struct timeval get_delta_time (Packet * a, Packet * b) {
@@ -232,7 +166,6 @@ struct timeval get_delta_time (Packet * a, Packet * b) {
 
   return output;
 }
-
 
 
 struct icmphdr *get_icmp_header(const u_char *packet) {
@@ -408,10 +341,10 @@ void print_output(void) {
   std::cout << "Fragmentation: " << std::endl;
 
   for (uint32_t i = 0; i < requests.size(); i++) {
-    std::vector<Packet> fragments = get_fragments(requests.at(i)->index);
+    std::vector<Packet *> fragments = get_fragments(requests.at(i)->index);
     int32_t count = fragments.size();
     if (count > 1) {
-      uint16_t offset = htons(get_ip_header(fragments.back().packet)->ip_off);
+      uint16_t offset = htons(get_ip_header(fragments.back()->packet)->ip_off);
       std::cout << "    The number of fragments created from the original "
                    "datagram (Packet "
                 << requests.at(i)->index + 1 << ") is: " << count << std::endl;
@@ -449,7 +382,7 @@ void print_output(void) {
 
     int32_t j;
     if ((j = get_response(requests.at(i)->index)) != -1) {
-	double mean = 0.0;
+      double mean = 0.0;
       std::cout << "The avg RRT between "
 		<< inet_ntoa(get_ip_header(first.packet)->ip_src) << " and "
 		<< inet_ntoa(get_ip_header(packets.at(j).packet)->ip_src)
